@@ -1,0 +1,108 @@
+{
+  "name": "beast-chatmode-general",
+  "description": "General-purpose Copilot instruction set for Beast Chat Mode (beast-4.1). Use these prompts as templates in chat/agent mode.",
+  "model": "beast-4.1",
+  "version": "1.0",
+  "instructions": [
+    {
+      "id": "explain-function",
+      "label": "Explain this function",
+      "prompt": "Explain this function: \"<paste code or file path>\" — 단계별로, 각 입력과 출력, 복잡도와 모호한 부분을 지적해줘."
+    },
+    {
+      "id": "summarize-repo",
+      "label": "Summarize the repository",
+      "prompt": "Summarize the repository: \"<repo root or brief context>\" — 목적, 핵심 컴포넌트, 엔트리 포인트를 간결히 정리해줘."
+    },
+    {
+      "id": "create-unit-tests",
+      "label": "Create unit tests",
+      "prompt": "Create unit tests for: \"<file or function>\" (framework: <jest/pytest/...>) — 가능한 경우 테스트 코드와 설명을 함께 제공해줘."
+    },
+    {
+      "id": "refactor-code",
+      "label": "Refactor to be more readable",
+      "prompt": "Refactor to be more readable/idiomatic: \"<file or code>\" — 변경 이유와 개선된 코드를 제시해줘."
+    },
+    {
+      "id": "add-types",
+      "label": "Add types/type hints",
+      "prompt": "Add types/type hints to: \"<file or function>\" (target: TypeScript/Python typing) — 변경 예시와 타입 정의를 포함해줘."
+    },
+    {
+      "id": "security-audit",
+      "label": "Find security issues",
+      "prompt": "Find security issues in: \"<file or repo>\" — 취약점 요약과 권장 수정사항을 알려줘."
+    },
+    {
+      "id": "optimize-performance",
+      "label": "Optimize for performance",
+      "prompt": "Optimize this code for performance: \"<code snippet or file>\" — 병목 분석, 복잡도, 개선된 코드 제안 포함."
+    },
+    {
+      "id": "migration-plan",
+      "label": "Write a migration plan",
+      "prompt": "Write a migration plan to add feature: \"<feature description>\" — 필요한 파일/데이터베이스/엔드포인트 변경과 단계별 작업 리스트."
+    },
+    {
+      "id": "commit-message",
+      "label": "Generate commit message",
+      "prompt": "Generate commit message for: \"<short change summary>\" — conventional commits 스타일(예: feat/fix/docs)."
+    },
+    {
+      "id": "pr-description",
+      "label": "Create PR description",
+      "prompt": "Create PR description from: \"<diff or brief list of changes>\" — 요약, 테스트 방법, 체크리스트 포함."
+    },
+    {
+      "id": "convert-language",
+      "label": "Convert to another language/framework",
+      "prompt": "Convert this to <language/framework>: \"<code or file>\" — 목표 플랫폼의 관례에 맞게 변환해줘."
+    },
+    {
+      "id": "add-logging",
+      "label": "Add logging and error handling",
+      "prompt": "Add logging and error handling to: \"<file or function>\" — 권장 위치와 코드 패치 예시 포함."
+    },
+    {
+      "id": "api-docs",
+      "label": "Produce API documentation",
+      "prompt": "Produce API documentation for: \"<endpoint or controller>\" — 요청/응답 예시와 스키마, 예제 포함."
+    },
+    {
+      "id": "test-cases",
+      "label": "Provide test and edge cases",
+      "prompt": "Provide test cases and edge cases for: \"<function or feature>\" — 정상/비정상/경계값 케이스 목록."
+    },
+    {
+      "id": "deps-upgrade",
+      "label": "Suggest dependency updates",
+      "prompt": "Suggest dependency updates and breaking changes for: \"<package.json or build file>\" — 주요 변경과 마이그레이션 권장사항."
+    },
+    {
+      "id": "min-repro",
+      "label": "Create minimal reproducible example",
+      "prompt": "Create a minimal reproducible example that demonstrates: \"<bug or behavior>\" — 실행 가능한 샘플과 재현 방법."
+    },
+    {
+      "id": "test-failure-analysis",
+      "label": "Explain failing test",
+      "prompt": "Explain why this test fails and how to fix it: \"<test output + code>\" — 원인 진단과 수정안."
+    },
+    {
+      "id": "ci-workflow",
+      "label": "Create CI workflow",
+      "prompt": "Create CI job for: <platform e.g., GitHub Actions> — 빌드, 테스트, 린트 포함한 예제 워크플로우."
+    },
+    {
+      "id": "changelog-entry",
+      "label": "Write changelog entry",
+      "prompt": "Write a changelog entry for: \"<version + notable changes>\" — 사용자 중심 릴리스 노트."
+    },
+    {
+      "id": "a11y-checklist",
+      "label": "Accessibility checklist",
+      "prompt": "Provide an accessibility checklist for: \"<UI component or page>\" — WCAG 기반 점검 항목과 개선 권장사항."
+    }
+  ]
+}

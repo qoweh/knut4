@@ -1,0 +1,30 @@
+# 기본: 모든 텍스트 파일은 LF로 저장
+* text=auto eol=lf
+
+# Java, JS, TS, HTML, CSS 등 코드 파일은 텍스트로 취급
+*.java text
+*.js text
+*.ts text
+*.jsx text
+*.tsx text
+*.html text
+*.css text
+*.scss text
+
+# 이미지/바이너리 파일
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+
+# Markdown은 마크다운 diff 사용
+*.md diff=markdown
+
+# 환경변수 파일은 텍스트
+.env text
+
+# OS별 줄바꿈 통일 (윈도우 배치 파일은 CRLF)
+*.bat text eol=crlf
+*.sh text eol=lf
