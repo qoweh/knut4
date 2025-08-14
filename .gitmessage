@@ -1,0 +1,11 @@
+# Commit message template
+# Format: <type>(<scope>): <subject>
+# Types: feat, fix, docs, style, refactor, test, chore
+# Scope is optional (module/package)
+# Subject should be short (50 chars max), imperative mood.
+
+<type>(<scope>): <short summary>
+
+Longer description of the change, if necessary.
+
+Closes #<issue-number>

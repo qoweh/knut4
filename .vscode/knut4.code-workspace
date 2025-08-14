@@ -1,0 +1,10 @@
+{
+  "folders": [
+    { "path": "backend1" },
+    { "path": "frontend" }
+  ],
+  "settings": {
+    "chat.tools.autoApprove": true,
+    "chat.agent.maxRequests": 100
+  }
+}

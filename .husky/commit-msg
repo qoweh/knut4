@@ -1,0 +1,11 @@
+#!/bin/sh
+# Simple commit-msg hook to check Conventional Commit pattern
+
+commit_msg_file=$1
+pattern='^(feat|fix|docs|style|refactor|test|chore)(\([a-z0-9._-]+\))?: .{1,50}'
+
+if ! grep -qE "$pattern" "$commit_msg_file"; then
+  echo "ERROR: Commit message does not follow the Conventional Commit pattern."
+  echo "Expected: <type>(<scope>): <subject>"
+  exit 1
+fi
