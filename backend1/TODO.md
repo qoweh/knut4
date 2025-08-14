@@ -1,5 +1,7 @@
 # TODO (백엔드)
 
+> ⚠️ 모든 작업은 반드시 GitHub 이슈 생성 → 브랜치 생성(git-flow 전략) → 커밋/PR 순으로 진행하세요. (자세한 내용은 AGENT_README.md, COMMIT_RULES.md 참고)
+
 ## 단기
 - [ ] 사용자 인증 (JWT) 구현
 - [ ] DB 스키마 정의 및 Flyway 설정

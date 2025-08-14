@@ -63,6 +63,10 @@ out/
 # VS Code
 ##################################
 .vscode/
+# Allow workspace file to be committed
+!/.vscode/knut4.code-workspace
+
+.github/
 
 ##################################
 # React / Node.js (Frontend)
