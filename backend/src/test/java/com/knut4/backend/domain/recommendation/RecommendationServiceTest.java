@@ -4,6 +4,7 @@ import com.knut4.backend.domain.place.MapProvider;
 import com.knut4.backend.domain.place.PlaceResult;
 import com.knut4.backend.domain.recommendation.dto.RecommendationRequest;
 import com.knut4.backend.domain.recommendation.dto.RecommendationResponse;
+import com.knut4.backend.domain.recommendation.repository.RecommendationHistoryRepository;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -15,10 +16,11 @@ public class RecommendationServiceTest {
     @Test
     void recommendBuildsResponse() {
         MapProvider mapProvider = mock(MapProvider.class);
+        RecommendationHistoryRepository historyRepository = mock(RecommendationHistoryRepository.class);
         when(mapProvider.search(anyString(), anyDouble(), anyDouble(), anyInt()))
                 .thenReturn(List.of(new PlaceResult("PlaceA", 37.0, 127.0, "Addr", 120.0)));
 
-        RecommendationService service = new RecommendationService(mapProvider);
+        RecommendationService service = new RecommendationService(mapProvider, historyRepository);
         RecommendationRequest req = new RecommendationRequest("sunny", List.of("매콤"), 10000, 37.1, 126.9);
         RecommendationResponse resp = service.recommend(req);
         assertThat(resp.menuRecommendations()).hasSize(1);
