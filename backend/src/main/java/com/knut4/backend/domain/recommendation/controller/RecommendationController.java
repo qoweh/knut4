@@ -6,10 +6,7 @@ import com.knut4.backend.domain.recommendation.dto.RecommendationResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/private/recommendations")
@@ -21,5 +18,10 @@ public class RecommendationController {
     @PostMapping
     public ResponseEntity<RecommendationResponse> recommend(@Valid @RequestBody RecommendationRequest request) {
         return ResponseEntity.ok(recommendationService.recommend(request));
+    }
+
+    @PostMapping("/retry")
+    public ResponseEntity<RecommendationResponse> retry(@RequestParam(required = false) Long historyId) {
+        return ResponseEntity.ok(recommendationService.retry(historyId));
     }
 }

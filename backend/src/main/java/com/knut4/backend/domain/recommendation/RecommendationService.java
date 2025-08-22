@@ -47,6 +47,32 @@ public class RecommendationService {
         return new RecommendationResponse(recs);
     }
 
+    public RecommendationResponse retry(Long historyId) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !(auth.getPrincipal() instanceof org.springframework.security.core.userdetails.User principal)) {
+            throw new IllegalArgumentException("Unauthenticated");
+        }
+        String username = principal.getUsername();
+        var user = userRepository.findByUsername(username).orElseThrow(() -> new IllegalArgumentException("User not found"));
+        RecommendationHistory baseHistory;
+        if (historyId != null) {
+            baseHistory = historyRepository.findById(historyId)
+                    .filter(h -> h.getUser() != null && h.getUser().getId().equals(user.getId()))
+                    .orElseThrow(() -> new IllegalArgumentException("History not found"));
+        } else {
+            baseHistory = historyRepository.findFirstByUserOrderByCreatedAtDesc(user)
+                    .orElseThrow(() -> new IllegalArgumentException("No history"));
+        }
+        RecommendationRequest request = new RecommendationRequest(
+                baseHistory.getWeather(),
+                baseHistory.getMoods() == null ? List.of() : List.of(baseHistory.getMoods().split(",")),
+                baseHistory.getBudget(),
+                baseHistory.getLatitude(),
+                baseHistory.getLongitude()
+        );
+        return recommend(request);
+    }
+
     private RecommendationResponse.MenuRecommendation buildMenuRecommendation(String menu, RecommendationRequest request) {
         String keyword = menu + " 음식";
         List<PlaceResult> places;
