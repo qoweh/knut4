@@ -17,8 +17,9 @@ import java.util.stream.Collectors;
  * Kakao local search provider implementation.
  * API docs: https://developers.kakao.com/docs/latest/ko/local/dev-guide#search-by-keyword
  */
-@Component
-@ConditionalOnProperty(name = "app.map.provider", havingValue = "kakao")
+// Temporarily disabled per directive to focus solely on Naver integration.
+//@Component
+//@ConditionalOnProperty(name = "app.map.provider", havingValue = "kakao")
 @RequiredArgsConstructor
 public class KakaoMapProvider implements MapProvider {
     private static final Logger log = LoggerFactory.getLogger(KakaoMapProvider.class);
