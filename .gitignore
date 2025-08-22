@@ -66,8 +66,6 @@ out/
 # Allow workspace file to be committed
 !/.vscode/knut4.code-workspace
 
-.github/
-
 ##################################
 # React / Node.js (Frontend)
 ##################################
@@ -83,3 +81,13 @@ yarn-error.log*
 # 환경변수 파일
 .env
 .env.*.local
+
+##################################
+# Secret Configuration Files
+##################################
+application-secret.yml
+application-secret-*.yml
+secrets/
+*.secret
+*.key
+*.pem

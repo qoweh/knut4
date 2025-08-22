@@ -1,0 +1,47 @@
+# Backend Dockerfile for Spring Boot application
+FROM openjdk:17-jdk-slim
+
+# Set working directory
+WORKDIR /app
+
+# Create non-root user for security
+RUN groupadd -r springboot && useradd -r -g springboot springboot
+
+# Copy gradle wrapper and build files
+COPY backend1/gradlew backend1/gradle ./
+COPY backend1/gradle ./gradle/
+COPY backend1/build.gradle backend1/settings.gradle ./
+
+# Copy source code
+COPY backend1/src ./src/
+
+# Make gradlew executable
+RUN chmod +x ./gradlew
+
+# Build the application
+RUN ./gradlew build -x test --no-daemon
+
+# Create runtime stage
+FROM openjdk:17-jre-slim
+
+WORKDIR /app
+
+# Create non-root user
+RUN groupadd -r springboot && useradd -r -g springboot springboot
+
+# Copy built jar from build stage
+COPY --from=0 /app/build/libs/*.jar app.jar
+
+# Change ownership to non-root user
+RUN chown -R springboot:springboot /app
+USER springboot
+
+# Expose port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8080/actuator/health || exit 1
+
+# Run the application
+ENTRYPOINT ["java", "-jar", "app.jar"]

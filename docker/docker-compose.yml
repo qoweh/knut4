@@ -1,0 +1,96 @@
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: knut4-db
+    environment:
+      POSTGRES_DB: knut4
+      POSTGRES_USER: knut4_user
+      POSTGRES_PASSWORD: knut4_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - knut4-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knut4_user -d knut4"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Backend Spring Boot Application
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: knut4-backend
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=knut4
+      - DB_USER=knut4_user
+      - DB_PASSWORD=knut4_password
+      - JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - knut4-network
+    volumes:
+      - backend_logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Frontend React Application (placeholder - will be implemented later)
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+    container_name: knut4-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - knut4-network
+    environment:
+      - REACT_APP_API_URL=http://localhost:8080
+    # Comment out until frontend is implemented
+    profiles:
+      - frontend
+
+  # Redis for caching (optional, for future use)
+  redis:
+    image: redis:7-alpine
+    container_name: knut4-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - knut4-network
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    profiles:
+      - cache
+
+networks:
+  knut4-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  backend_logs:
+    driver: local
