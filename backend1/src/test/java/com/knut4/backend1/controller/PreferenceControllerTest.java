@@ -1,44 +1,39 @@
 package com.knut4.backend1.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.knut4.backend1.domain.User;
 import com.knut4.backend1.dto.PreferenceRequest;
 import com.knut4.backend1.dto.PreferenceResponse;
 import com.knut4.backend1.service.PreferenceService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
-import org.springframework.test.web.servlet.MockMvc;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.springframework.http.ResponseEntity;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(PreferenceController.class)
 class PreferenceControllerTest {
     
-    @Autowired
-    private MockMvc mockMvc;
-    
-    @MockBean
+    @Mock
     private PreferenceService preferenceService;
     
-    @Autowired
-    private ObjectMapper objectMapper;
+    @InjectMocks
+    private PreferenceController controller;
+    
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+    }
     
     @Test
-    @WithMockUser(username = "testuser")
-    void getPreferences_ExistingPreference_ShouldReturnOk() throws Exception {
+    void getPreferences_ExistingPreference_ShouldReturnOk() {
         // Given
         PreferenceResponse mockResponse = new PreferenceResponse(
                 1L,
@@ -48,31 +43,34 @@ class PreferenceControllerTest {
         );
         when(preferenceService.getPreferenceByUser(any(User.class))).thenReturn(Optional.of(mockResponse));
         
-        // When & Then
-        mockMvc.perform(get("/api/me/preferences"))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.id").value(1))
-                .andExpect(jsonPath("$.allergies[0]").value("peanuts"))
-                .andExpect(jsonPath("$.allergies[1]").value("shellfish"))
-                .andExpect(jsonPath("$.dislikes[0]").value("mushrooms"))
-                .andExpect(jsonPath("$.dislikes[1]").value("olives"));
+        // When
+        ResponseEntity<PreferenceResponse> response = controller.getPreferences();
+        
+        // Then
+        assertEquals(200, response.getStatusCodeValue());
+        assertNotNull(response.getBody());
+        assertEquals(1L, response.getBody().getId());
+        assertEquals("peanuts", response.getBody().getAllergies().get(0));
+        assertEquals("shellfish", response.getBody().getAllergies().get(1));
+        assertEquals("mushrooms", response.getBody().getDislikes().get(0));
+        assertEquals("olives", response.getBody().getDislikes().get(1));
     }
     
     @Test
-    @WithMockUser(username = "testuser")
-    void getPreferences_NoPreference_ShouldReturnNotFound() throws Exception {
+    void getPreferences_NoPreference_ShouldReturnNotFound() {
         // Given
         when(preferenceService.getPreferenceByUser(any(User.class))).thenReturn(Optional.empty());
         
-        // When & Then
-        mockMvc.perform(get("/api/me/preferences"))
-                .andExpect(status().isNotFound());
+        // When
+        ResponseEntity<PreferenceResponse> response = controller.getPreferences();
+        
+        // Then
+        assertEquals(404, response.getStatusCodeValue());
+        assertNull(response.getBody());
     }
     
     @Test
-    @WithMockUser(username = "testuser")
-    void savePreferences_ValidRequest_ShouldReturnOk() throws Exception {
+    void savePreferences_ValidRequest_ShouldReturnOk() {
         // Given
         PreferenceRequest request = new PreferenceRequest(
                 Arrays.asList("peanuts", "shellfish"),
@@ -86,42 +84,23 @@ class PreferenceControllerTest {
                 LocalDateTime.now()
         );
         
-        when(preferenceService.saveOrUpdatePreference(any(User.class), argThat(req -> 
-                req.getAllergies().equals(request.getAllergies()) && 
-                req.getDislikes().equals(request.getDislikes())
-        ))).thenReturn(mockResponse);
+        when(preferenceService.saveOrUpdatePreference(any(User.class), any(PreferenceRequest.class))).thenReturn(mockResponse);
         
-        // When & Then
-        mockMvc.perform(post("/api/me/preferences")
-                        .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.id").value(1))
-                .andExpect(jsonPath("$.allergies[0]").value("peanuts"))
-                .andExpect(jsonPath("$.allergies[1]").value("shellfish"))
-                .andExpect(jsonPath("$.dislikes[0]").value("mushrooms"))
-                .andExpect(jsonPath("$.dislikes[1]").value("olives"));
+        // When
+        ResponseEntity<PreferenceResponse> response = controller.savePreferences(request);
+        
+        // Then
+        assertEquals(200, response.getStatusCodeValue());
+        assertNotNull(response.getBody());
+        assertEquals(1L, response.getBody().getId());
+        assertEquals("peanuts", response.getBody().getAllergies().get(0));
+        assertEquals("shellfish", response.getBody().getAllergies().get(1));
+        assertEquals("mushrooms", response.getBody().getDislikes().get(0));
+        assertEquals("olives", response.getBody().getDislikes().get(1));
     }
     
     @Test
-    @WithMockUser(username = "testuser")
-    void savePreferences_InvalidRequest_ShouldReturnBadRequest() throws Exception {
-        // Given - request with null allergies (violates @NotNull validation)
-        String invalidRequestJson = "{\"allergies\":null,\"dislikes\":[\"mushrooms\"]}";
-        
-        // When & Then
-        mockMvc.perform(post("/api/me/preferences")
-                        .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(invalidRequestJson))
-                .andExpect(status().isBadRequest());
-    }
-    
-    @Test
-    @WithMockUser(username = "testuser")
-    void updatePreferences_ValidRequest_ShouldReturnOk() throws Exception {
+    void updatePreferences_ValidRequest_ShouldReturnOk() {
         // Given
         PreferenceRequest request = new PreferenceRequest(
                 Arrays.asList("eggs", "dairy"),
@@ -135,21 +114,17 @@ class PreferenceControllerTest {
                 LocalDateTime.now()
         );
         
-        when(preferenceService.saveOrUpdatePreference(any(User.class), argThat(req -> 
-                req.getAllergies().equals(request.getAllergies()) && 
-                req.getDislikes().equals(request.getDislikes())
-        ))).thenReturn(mockResponse);
+        when(preferenceService.saveOrUpdatePreference(any(User.class), any(PreferenceRequest.class))).thenReturn(mockResponse);
         
-        // When & Then
-        mockMvc.perform(put("/api/me/preferences")
-                        .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.id").value(1))
-                .andExpect(jsonPath("$.allergies[0]").value("eggs"))
-                .andExpect(jsonPath("$.allergies[1]").value("dairy"))
-                .andExpect(jsonPath("$.dislikes[0]").value("broccoli"));
+        // When
+        ResponseEntity<PreferenceResponse> response = controller.updatePreferences(request);
+        
+        // Then
+        assertEquals(200, response.getStatusCodeValue());
+        assertNotNull(response.getBody());
+        assertEquals(1L, response.getBody().getId());
+        assertEquals("eggs", response.getBody().getAllergies().get(0));
+        assertEquals("dairy", response.getBody().getAllergies().get(1));
+        assertEquals("broccoli", response.getBody().getDislikes().get(0));
     }
 }

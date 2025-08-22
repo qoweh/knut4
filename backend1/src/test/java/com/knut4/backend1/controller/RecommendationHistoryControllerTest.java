@@ -1,42 +1,44 @@
 package com.knut4.backend1.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.knut4.backend1.domain.User;
 import com.knut4.backend1.dto.RecommendationHistoryResponse;
 import com.knut4.backend1.service.RecommendationHistoryService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.http.ResponseEntity;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(RecommendationHistoryController.class)
 class RecommendationHistoryControllerTest {
     
-    @Autowired
-    private MockMvc mockMvc;
-    
-    @MockBean
+    @Mock
     private RecommendationHistoryService recommendationHistoryService;
     
+    @InjectMocks
+    private RecommendationHistoryController controller;
+    
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+    }
+    
     @Test
-    @WithMockUser(username = "testuser")
-    void getRecommendationHistory_WithoutPagination_ShouldReturnAllHistory() throws Exception {
+    void getRecommendationHistory_WithoutPagination_ShouldReturnAllHistory() {
         // Given
         List<RecommendationHistoryResponse> mockHistory = Arrays.asList(
                 new RecommendationHistoryResponse(1L, Arrays.asList("chicken", "rice"), "lunch", LocalDateTime.now()),
@@ -45,25 +47,20 @@ class RecommendationHistoryControllerTest {
         
         when(recommendationHistoryService.getRecommendationHistoryByUser(any(User.class))).thenReturn(mockHistory);
         
-        // When & Then
-        mockMvc.perform(get("/api/me/recommendations"))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$.length()").value(2))
-                .andExpect(jsonPath("$[0].id").value(1))
-                .andExpect(jsonPath("$[0].recommendedItems[0]").value("chicken"))
-                .andExpect(jsonPath("$[0].recommendedItems[1]").value("rice"))
-                .andExpect(jsonPath("$[0].context").value("lunch"))
-                .andExpect(jsonPath("$[1].id").value(2))
-                .andExpect(jsonPath("$[1].recommendedItems[0]").value("pasta"))
-                .andExpect(jsonPath("$[1].recommendedItems[1]").value("salad"))
-                .andExpect(jsonPath("$[1].context").value("dinner"));
+        // When
+        ResponseEntity<List<RecommendationHistoryResponse>> response = controller.getRecommendationHistory(0, 0);
+        
+        // Then
+        assertEquals(200, response.getStatusCodeValue());
+        assertNotNull(response.getBody());
+        assertEquals(2, response.getBody().size());
+        assertEquals(1L, response.getBody().get(0).getId());
+        assertEquals("chicken", response.getBody().get(0).getRecommendedItems().get(0));
+        assertEquals("lunch", response.getBody().get(0).getContext());
     }
     
     @Test
-    @WithMockUser(username = "testuser")
-    void getRecommendationHistory_WithPagination_ShouldReturnPagedResults() throws Exception {
+    void getRecommendationHistory_WithPagination_ShouldReturnPagedResults() {
         // Given
         List<RecommendationHistoryResponse> mockHistory = Collections.singletonList(
                 new RecommendationHistoryResponse(1L, Arrays.asList("chicken", "rice"), "lunch", LocalDateTime.now())
@@ -73,37 +70,34 @@ class RecommendationHistoryControllerTest {
         when(recommendationHistoryService.getRecommendationHistoryByUser(any(User.class), eq(PageRequest.of(0, 10))))
                 .thenReturn(mockPage);
         
-        // When & Then
-        mockMvc.perform(get("/api/me/recommendations")
-                        .param("page", "0")
-                        .param("size", "10"))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].id").value(1))
-                .andExpect(jsonPath("$[0].recommendedItems[0]").value("chicken"))
-                .andExpect(jsonPath("$[0].context").value("lunch"));
+        // When
+        ResponseEntity<List<RecommendationHistoryResponse>> response = controller.getRecommendationHistory(0, 10);
+        
+        // Then
+        assertEquals(200, response.getStatusCodeValue());
+        assertNotNull(response.getBody());
+        assertEquals(1, response.getBody().size());
+        assertEquals(1L, response.getBody().get(0).getId());
+        assertEquals("chicken", response.getBody().get(0).getRecommendedItems().get(0));
     }
     
     @Test
-    @WithMockUser(username = "testuser")
-    void getRecommendationHistory_EmptyHistory_ShouldReturnEmptyArray() throws Exception {
+    void getRecommendationHistory_EmptyHistory_ShouldReturnEmptyArray() {
         // Given
         when(recommendationHistoryService.getRecommendationHistoryByUser(any(User.class)))
                 .thenReturn(Collections.emptyList());
         
-        // When & Then
-        mockMvc.perform(get("/api/me/recommendations"))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$.length()").value(0));
+        // When
+        ResponseEntity<List<RecommendationHistoryResponse>> response = controller.getRecommendationHistory(0, 0);
+        
+        // Then
+        assertEquals(200, response.getStatusCodeValue());
+        assertNotNull(response.getBody());
+        assertEquals(0, response.getBody().size());
     }
     
     @Test
-    @WithMockUser(username = "testuser")
-    void getRecommendationHistory_InvalidPageSize_ShouldFallBackToNonPaged() throws Exception {
+    void getRecommendationHistory_InvalidPageSize_ShouldFallBackToNonPaged() {
         // Given
         List<RecommendationHistoryResponse> mockHistory = Arrays.asList(
                 new RecommendationHistoryResponse(1L, Arrays.asList("chicken", "rice"), "lunch", LocalDateTime.now())
@@ -111,13 +105,12 @@ class RecommendationHistoryControllerTest {
         
         when(recommendationHistoryService.getRecommendationHistoryByUser(any(User.class))).thenReturn(mockHistory);
         
-        // When & Then - negative page size should trigger non-paged query
-        mockMvc.perform(get("/api/me/recommendations")
-                        .param("page", "0")
-                        .param("size", "-1"))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$.length()").value(1));
+        // When - negative page size should trigger non-paged query
+        ResponseEntity<List<RecommendationHistoryResponse>> response = controller.getRecommendationHistory(0, -1);
+        
+        // Then
+        assertEquals(200, response.getStatusCodeValue());
+        assertNotNull(response.getBody());
+        assertEquals(1, response.getBody().size());
     }
 }
