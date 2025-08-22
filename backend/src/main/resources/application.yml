@@ -1,0 +1,52 @@
+spring:
+  application:
+    name: backend
+  profiles:
+    active: dev
+  datasource:
+    url: jdbc:h2:mem:app;MODE=MYSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+  sql:
+    init:
+      mode: never
+
+logging:
+  level:
+    org.springframework.security: INFO
+    org.springframework.web: INFO
+    com.knut4: DEBUG
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: alpha
+    tags-sorter: alpha
+
+app:
+  jwt:
+    issuer: knut4
+    access-token-validity-seconds: 3600
+
+---
+spring.config.activate.on-profile: prod
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/knut4?characterEncoding=UTF-8&serverTimezone=UTC
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:password}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+
+logging.level.com.knut4: INFO
