@@ -21,10 +21,10 @@ public class NaverMapProvider implements MapProvider {
     private final WebClient webClient;
     
     @Value("${naver.map.client-id}")
-    private String clientId;
+    String clientId;
     
     @Value("${naver.map.client-secret}")
-    private String clientSecret;
+    String clientSecret;
     
     private static final String NAVER_SEARCH_API = "https://openapi.naver.com/v1/search/local.json";
     
