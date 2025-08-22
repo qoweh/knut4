@@ -6,8 +6,11 @@ import com.knut4.backend.domain.llm.LlmClient;
 import com.knut4.backend.domain.recommendation.dto.RecommendationRequest;
 import com.knut4.backend.domain.recommendation.dto.RecommendationResponse;
 import com.knut4.backend.domain.recommendation.entity.RecommendationHistory;
+import com.knut4.backend.domain.recommendation.entity.SharedRecommendation;
 import com.knut4.backend.domain.recommendation.repository.RecommendationHistoryRepository;
+import com.knut4.backend.domain.recommendation.repository.SharedRecommendationRepository;
 import com.knut4.backend.domain.user.UserRepository;
+import com.knut4.backend.common.exception.ResourceNotFoundException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -22,15 +25,18 @@ public class RecommendationService {
     private final RecommendationHistoryRepository historyRepository;
     private final LlmClient llmClient; // may be null when disabled
     private final UserRepository userRepository;
+    private final SharedRecommendationRepository sharedRepository;
 
     public RecommendationService(MapProvider mapProvider,
-                                  RecommendationHistoryRepository historyRepository,
-                                  @org.springframework.beans.factory.annotation.Autowired(required = false) LlmClient llmClient,
-                                  UserRepository userRepository) {
+                                 RecommendationHistoryRepository historyRepository,
+                                 @org.springframework.beans.factory.annotation.Autowired(required = false) LlmClient llmClient,
+                                 UserRepository userRepository,
+                                 SharedRecommendationRepository sharedRepository) {
         this.mapProvider = mapProvider;
         this.historyRepository = historyRepository;
         this.llmClient = llmClient; // may be null
         this.userRepository = userRepository;
+        this.sharedRepository = sharedRepository;
     }
 
     public RecommendationResponse recommend(RecommendationRequest request) {
@@ -58,10 +64,10 @@ public class RecommendationService {
         if (historyId != null) {
             baseHistory = historyRepository.findById(historyId)
                     .filter(h -> h.getUser() != null && h.getUser().getId().equals(user.getId()))
-                    .orElseThrow(() -> new IllegalArgumentException("History not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("History not found"));
         } else {
             baseHistory = historyRepository.findFirstByUserOrderByCreatedAtDesc(user)
-                    .orElseThrow(() -> new IllegalArgumentException("No history"));
+                    .orElseThrow(() -> new ResourceNotFoundException("No history"));
         }
         RecommendationRequest request = new RecommendationRequest(
                 baseHistory.getWeather(),
@@ -71,6 +77,37 @@ public class RecommendationService {
                 baseHistory.getLongitude()
         );
         return recommend(request);
+    }
+
+    public SharedRecommendation share(Long historyId) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !(auth.getPrincipal() instanceof org.springframework.security.core.userdetails.User principal)) {
+            throw new IllegalArgumentException("Unauthenticated");
+        }
+        var user = userRepository.findByUsername(principal.getUsername())
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        RecommendationHistory history;
+        if (historyId != null) {
+            history = historyRepository.findById(historyId)
+                    .filter(h -> h.getUser() != null && h.getUser().getId().equals(user.getId()))
+                    .orElseThrow(() -> new ResourceNotFoundException("History not found"));
+        } else {
+            history = historyRepository.findFirstByUserOrderByCreatedAtDesc(user)
+                    .orElseThrow(() -> new ResourceNotFoundException("No history"));
+        }
+        return sharedRepository.findByHistory_Id(history.getId())
+                .orElseGet(() -> {
+                    SharedRecommendation sr = new SharedRecommendation();
+                    sr.setHistory(history);
+                    sr.setUser(user);
+                    return sharedRepository.save(sr);
+                });
+    }
+
+    public RecommendationHistory getShared(String token) {
+        SharedRecommendation sr = sharedRepository.findByToken(token)
+                .orElseThrow(() -> new ResourceNotFoundException("Share token not found"));
+        return sr.getHistory();
     }
 
     private RecommendationResponse.MenuRecommendation buildMenuRecommendation(String menu, RecommendationRequest request) {
