@@ -35,6 +35,11 @@ app:
   jwt:
     issuer: knut4
     access-token-validity-seconds: 3600
+  llm:
+    enabled: false
+    timeout-seconds: 3
+    gpt4all:
+      url: http://gpt4all:4891
 
 ---
 spring.config.activate.on-profile: prod

@@ -21,11 +21,15 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      gpt4all:
+        condition: service_healthy
     environment:
       SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/knut4?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=UTC
       SPRING_DATASOURCE_USERNAME: app
       SPRING_DATASOURCE_PASSWORD: app
       SPRING_PROFILES_ACTIVE: prod
+      APP_LLM_ENABLED: true
+      APP_LLM_GPT4ALL_URL: http://gpt4all:4891
     ports:
       - "8080:8080"
   frontend:
@@ -36,6 +40,18 @@ services:
       - "3000:80"
   gpt4all:
     image: ghcr.io/nomic-ai/gpt4all:latest
-    command: ["/bin/sh","-c","echo 'Placeholder GPT4All container'; sleep 3600"]
+    ports:
+      - "4891:4891"
+    volumes:
+      - models_data:/models
+    environment:
+      - MODEL_PATH=/models
+    command: ["gpt4all", "--host", "0.0.0.0", "--port", "4891"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4891/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 volumes:
   db_data:
+  models_data:

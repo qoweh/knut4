@@ -23,7 +23,7 @@ Container: Docker & docker-compose (upcoming)
 - [x] Unit tests (auth, recommendation service, map provider utils)
 - [x] Integration tests (auth + recommendation)
 - [ ] Frontend pages (Main, Auth, Results, My Page)
-- [ ] GPT4All integration to generate menu candidates & reasons
+- [x] GPT4All integration to generate menu candidates & reasons
 - [ ] Kakao map provider implementation & provider selection
 - [ ] Docker / compose setup (FE/BE/DB/LLM)
 - [ ] My Page history & preferences APIs
@@ -38,12 +38,32 @@ app:
     issuer: knut4
     access-token-validity-seconds: 3600
     refresh-token-validity-seconds: 1209600
+  llm:
+    enabled: true  # Set to false to disable LLM features
+    timeout-seconds: 3
+    gpt4all:
+      url: http://localhost:4891  # GPT4All sidecar URL
 naver:
   map:
     client-id: <your-id>
     client-secret: <your-secret>
 ```
 Run: `./gradlew bootRun`
+
+### LLM Integration (GPT4All)
+The application supports local LLM integration via GPT4All for generating menu recommendations:
+
+- **Configuration**: Set `app.llm.enabled=true` to enable LLM features
+- **Timeout**: Configured timeout (default 3s) with automatic fallback to mood-based recommendations
+- **Docker**: GPT4All runs as a sidecar container with model persistence in `models_data` volume
+- **Fallback**: When LLM is disabled or times out, returns recommendations based on user's first mood preference
+
+To run with Docker including LLM:
+```bash
+docker-compose up -d
+```
+
+The GPT4All service will download models on first startup. Ensure sufficient disk space for model storage.
 
 ### Tests
 `./gradlew test` – includes unit + integration tests. Recommendation integration works without Naver credentials (returns empty place list gracefully).

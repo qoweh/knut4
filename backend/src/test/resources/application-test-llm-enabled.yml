@@ -20,4 +20,7 @@ app:
     issuer: test-issuer
     access-token-validity-seconds: 600
   llm:
-    enabled: false
+    enabled: true
+    timeout-seconds: 1  # Short timeout to test fallback
+    gpt4all:
+      url: http://localhost:9999  # Non-existent URL to trigger timeout
