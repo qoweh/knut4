@@ -83,3 +83,7 @@ yarn-error.log*
 # 환경변수 파일
 .env
 .env.*.local
+
+# Secrets
+backend/src/main/resources/application-secret.yml
+frontend/.env
