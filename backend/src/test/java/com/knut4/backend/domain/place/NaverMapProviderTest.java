@@ -11,4 +11,15 @@ public class NaverMapProviderTest {
         NaverMapProvider provider = new NaverMapProvider(WebClient.builder());
         assertThat(provider.search("치킨", 37.0, 127.0, 500)).isEmpty();
     }
+
+    @Test
+    void haversineRoughDistance() {
+        double d = NaverMapProvider.haversineMeters(37.0,127.0,37.0009,127.0009);
+        assertThat(d).isBetween(100.0, 150.0); // ~126m
+    }
+
+    @Test
+    void sanitizeRemovesTags() {
+        assertThat(NaverMapProvider.sanitize("<b>맛집</b>")).isEqualTo("맛집");
+    }
 }
