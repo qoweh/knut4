@@ -1,5 +1,7 @@
 package com.knut4.backend.domain.recommendation;
 
+import com.knut4.backend.domain.place.MapProvider;
+import com.knut4.backend.domain.place.PlaceResult;
 import com.knut4.backend.domain.recommendation.dto.RecommendationRequest;
 import com.knut4.backend.domain.recommendation.dto.ShareRecommendationResponse;
 import com.knut4.backend.domain.recommendation.dto.SharedRecommendationResponse;
@@ -12,8 +14,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureWebMvc;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
@@ -22,13 +25,16 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
-@AutoConfigureWebMvc
+@AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Transactional
 public class RecommendationSharingIntegrationTest {
@@ -48,12 +54,19 @@ public class RecommendationSharingIntegrationTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @MockBean
+    private MapProvider mapProvider;
+
     private User testUser;
     private User otherUser;
     private String authToken;
 
     @BeforeEach
     void setUp() throws Exception {
+        // Mock MapProvider to return sample results
+        when(mapProvider.search(anyString(), anyDouble(), anyDouble(), anyInt()))
+                .thenReturn(List.of(new PlaceResult("Test Restaurant", 37.5665, 126.9780, "Test Address", 100.0)));
+
         // Create test users
         testUser = new User();
         testUser.setUsername("testuser");
