@@ -18,11 +18,11 @@ public class RecommendationServiceTest {
     @Test
     void recommendBuildsResponse() {
         MapProvider mapProvider = mock(MapProvider.class);
-        RecommendationHistoryRepository historyRepository = mock(RecommendationHistoryRepository.class);
+    RecommendationHistoryRepository historyRepository = mock(RecommendationHistoryRepository.class);
+    UserRepository userRepository = mock(UserRepository.class);
         when(mapProvider.search(anyString(), anyDouble(), anyDouble(), anyInt()))
                 .thenReturn(List.of(new PlaceResult("PlaceA", 37.0, 127.0, "Addr", 120.0)));
 
-    UserRepository userRepository = mock(UserRepository.class);
     RecommendationService service = new RecommendationService(mapProvider, historyRepository, null, userRepository);
         RecommendationRequest req = new RecommendationRequest("sunny", List.of("매콤"), 10000, 37.1, 126.9);
         RecommendationResponse resp = service.recommend(req);

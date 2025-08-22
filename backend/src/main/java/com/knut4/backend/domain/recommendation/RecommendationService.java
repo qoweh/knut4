@@ -3,13 +3,11 @@ package com.knut4.backend.domain.recommendation;
 import com.knut4.backend.domain.place.MapProvider;
 import com.knut4.backend.domain.place.PlaceResult;
 import com.knut4.backend.domain.llm.LlmClient;
-import com.knut4.backend.domain.user.User;
-import com.knut4.backend.domain.user.UserRepository;
 import com.knut4.backend.domain.recommendation.dto.RecommendationRequest;
 import com.knut4.backend.domain.recommendation.dto.RecommendationResponse;
 import com.knut4.backend.domain.recommendation.entity.RecommendationHistory;
 import com.knut4.backend.domain.recommendation.repository.RecommendationHistoryRepository;
-import lombok.RequiredArgsConstructor;
+import com.knut4.backend.domain.user.UserRepository;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -26,9 +24,9 @@ public class RecommendationService {
     private final UserRepository userRepository;
 
     public RecommendationService(MapProvider mapProvider,
-                                 RecommendationHistoryRepository historyRepository,
-                                 @org.springframework.beans.factory.annotation.Autowired(required = false) LlmClient llmClient,
-                                 UserRepository userRepository) {
+                                  RecommendationHistoryRepository historyRepository,
+                                  @org.springframework.beans.factory.annotation.Autowired(required = false) LlmClient llmClient,
+                                  UserRepository userRepository) {
         this.mapProvider = mapProvider;
         this.historyRepository = historyRepository;
         this.llmClient = llmClient; // may be null
@@ -55,7 +53,7 @@ public class RecommendationService {
         try {
             places = mapProvider.search(keyword, request.latitude(), request.longitude(), 1000);
         } catch (Exception e) {
-            // fallback to empty list on provider failure to satisfy non-functional requirement
+            // fallback to empty list to satisfy non-functional requirement (resilience)
             places = List.of();
         }
         List<RecommendationResponse.Place> mapped = places.stream()
@@ -81,8 +79,8 @@ public class RecommendationService {
             h.setLatitude(request.latitude());
             h.setLongitude(request.longitude());
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth != null && auth.getPrincipal() instanceof org.springframework.security.core.userdetails.User springUser) {
-                String username = springUser.getUsername();
+            if (auth != null && auth.getPrincipal() instanceof org.springframework.security.core.userdetails.User principal) {
+                String username = principal.getUsername();
                 userRepository.findByUsername(username).ifPresent(h::setUser);
             }
             historyRepository.save(h);

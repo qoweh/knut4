@@ -40,18 +40,18 @@ public class HistoryController {
         Page<RecommendationHistory> pageResult = repository.findByUserOrderByCreatedAtDesc(user, pageable);
         return ResponseEntity.ok(HistoryPageResponse.from(pageResult));
     }
+}
 
-    public record HistoryItem(Long id, String weather, String moods, Integer budget, Double latitude, Double longitude, java.time.Instant createdAt) {
-        static HistoryItem from(RecommendationHistory h) {
-            return new HistoryItem(h.getId(), h.getWeather(), h.getMoods(), h.getBudget(), h.getLatitude(), h.getLongitude(), h.getCreatedAt());
-        }
+record HistoryPageItem(Long id, String weather, String moods, Integer budget, Double latitude, Double longitude, java.time.Instant createdAt) {
+    static HistoryPageItem from(RecommendationHistory h) {
+        return new HistoryPageItem(h.getId(), h.getWeather(), h.getMoods(), h.getBudget(), h.getLatitude(), h.getLongitude(), h.getCreatedAt());
     }
+}
 
-    public record HistoryPageResponse(List<HistoryItem> content, int page, int size, long totalElements, int totalPages) {
-        static HistoryPageResponse from(Page<RecommendationHistory> page) {
-            List<HistoryItem> items = page.getContent().stream().map(HistoryItem::from).toList();
-            return new HistoryPageResponse(items, page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages());
-        }
-        static HistoryPageResponse empty() { return new HistoryPageResponse(List.of(), 0, 0, 0, 0); }
+record HistoryPageResponse(List<HistoryPageItem> content, int page, int size, long totalElements, int totalPages, boolean last) {
+    static HistoryPageResponse from(Page<RecommendationHistory> page) {
+        List<HistoryPageItem> items = page.getContent().stream().map(HistoryPageItem::from).toList();
+        return new HistoryPageResponse(items, page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages(), page.isLast());
     }
+    static HistoryPageResponse empty() { return new HistoryPageResponse(List.of(),0,0,0,0,true); }
 }
