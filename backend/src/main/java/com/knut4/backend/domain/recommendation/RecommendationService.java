@@ -3,6 +3,8 @@ package com.knut4.backend.domain.recommendation;
 import com.knut4.backend.domain.place.MapProvider;
 import com.knut4.backend.domain.place.PlaceResult;
 import com.knut4.backend.domain.llm.LlmClient;
+import com.knut4.backend.domain.user.User;
+import com.knut4.backend.domain.user.UserRepository;
 import com.knut4.backend.domain.recommendation.dto.RecommendationRequest;
 import com.knut4.backend.domain.recommendation.dto.RecommendationResponse;
 import com.knut4.backend.domain.recommendation.entity.RecommendationHistory;
@@ -21,13 +23,16 @@ public class RecommendationService {
     private final MapProvider mapProvider; // injected strategy (Naver or Kakao)
     private final RecommendationHistoryRepository historyRepository;
     private final LlmClient llmClient; // may be null when disabled
+    private final UserRepository userRepository;
 
     public RecommendationService(MapProvider mapProvider,
-                                  RecommendationHistoryRepository historyRepository,
-                                  @org.springframework.beans.factory.annotation.Autowired(required = false) LlmClient llmClient) {
+                                 RecommendationHistoryRepository historyRepository,
+                                 @org.springframework.beans.factory.annotation.Autowired(required = false) LlmClient llmClient,
+                                 UserRepository userRepository) {
         this.mapProvider = mapProvider;
         this.historyRepository = historyRepository;
         this.llmClient = llmClient; // may be null
+        this.userRepository = userRepository;
     }
 
     public RecommendationResponse recommend(RecommendationRequest request) {
@@ -46,7 +51,13 @@ public class RecommendationService {
 
     private RecommendationResponse.MenuRecommendation buildMenuRecommendation(String menu, RecommendationRequest request) {
         String keyword = menu + " 음식";
-        List<PlaceResult> places = mapProvider.search(keyword, request.latitude(), request.longitude(), 1000);
+        List<PlaceResult> places;
+        try {
+            places = mapProvider.search(keyword, request.latitude(), request.longitude(), 1000);
+        } catch (Exception e) {
+            // fallback to empty list on provider failure to satisfy non-functional requirement
+            places = List.of();
+        }
         List<RecommendationResponse.Place> mapped = places.stream()
                 .map(p -> new RecommendationResponse.Place(p.name(), p.latitude(), p.longitude(), p.address(), p.distanceMeters(), estimateDurationMinutes(p.distanceMeters())))
                 .collect(Collectors.toList());
@@ -70,7 +81,10 @@ public class RecommendationService {
             h.setLatitude(request.latitude());
             h.setLongitude(request.longitude());
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            // TODO: associate user when integrating user linking (auth principal)
+            if (auth != null && auth.getPrincipal() instanceof org.springframework.security.core.userdetails.User springUser) {
+                String username = springUser.getUsername();
+                userRepository.findByUsername(username).ifPresent(h::setUser);
+            }
             historyRepository.save(h);
         } catch (Exception ignored) {
             // swallow to avoid disrupting main flow
