@@ -12,12 +12,13 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 import com.knut4.backend.common.security.JwtTokenProvider;
 import com.knut4.backend.common.security.JwtAuthenticationFilter;
+import com.knut4.backend.common.security.JwtAuthenticationEntryPoint;
 
 @Configuration
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtTokenProvider tokenProvider) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtTokenProvider tokenProvider, JwtAuthenticationEntryPoint entryPoint) throws Exception {
         http
         .csrf(csrf -> csrf.disable())
         .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -25,6 +26,7 @@ public class SecurityConfig {
             .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/health", "/api/public/**").permitAll()
             .anyRequest().authenticated()
         )
+                .exceptionHandling(ex -> ex.authenticationEntryPoint(entryPoint))
         .addFilterBefore(new JwtAuthenticationFilter(tokenProvider), UsernamePasswordAuthenticationFilter.class)
         .httpBasic(Customizer.withDefaults());
         return http.build();

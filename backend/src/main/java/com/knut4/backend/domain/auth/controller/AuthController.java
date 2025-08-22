@@ -1,6 +1,7 @@
 package com.knut4.backend.domain.auth.controller;
 
 import com.knut4.backend.domain.auth.dto.LoginRequest;
+import com.knut4.backend.domain.auth.dto.AccessTokenResponse;
 import com.knut4.backend.domain.auth.dto.SignUpRequest;
 import com.knut4.backend.domain.auth.dto.UserResponse;
 import com.knut4.backend.common.security.JwtTokenProvider;
@@ -32,12 +33,13 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<String> login(@Valid @RequestBody LoginRequest request) {
+    public ResponseEntity<AccessTokenResponse> login(@Valid @RequestBody LoginRequest request) {
         User user = userService.findByUsername(request.username());
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             throw new IllegalArgumentException("잘못된 자격 증명입니다.");
         }
-        String token = tokenProvider.createAccessToken(user.getUsername());
-        return ResponseEntity.ok(token);
+    var token = tokenProvider.createAccessToken(user.getUsername());
+    var expiresAt = tokenProvider.getExpirationInstant(token);
+    return ResponseEntity.ok(new AccessTokenResponse(token, expiresAt));
     }
 }
