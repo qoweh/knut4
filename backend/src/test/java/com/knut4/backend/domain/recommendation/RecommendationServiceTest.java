@@ -2,6 +2,7 @@ package com.knut4.backend.domain.recommendation;
 
 import com.knut4.backend.domain.place.MapProvider;
 import com.knut4.backend.domain.place.PlaceResult;
+import com.knut4.backend.domain.llm.LlmClient;
 import com.knut4.backend.domain.recommendation.dto.RecommendationRequest;
 import com.knut4.backend.domain.recommendation.dto.RecommendationResponse;
 import com.knut4.backend.domain.recommendation.repository.RecommendationHistoryRepository;
@@ -20,7 +21,7 @@ public class RecommendationServiceTest {
         when(mapProvider.search(anyString(), anyDouble(), anyDouble(), anyInt()))
                 .thenReturn(List.of(new PlaceResult("PlaceA", 37.0, 127.0, "Addr", 120.0)));
 
-        RecommendationService service = new RecommendationService(mapProvider, historyRepository);
+    RecommendationService service = new RecommendationService(mapProvider, historyRepository, null);
         RecommendationRequest req = new RecommendationRequest("sunny", List.of("매콤"), 10000, 37.1, 126.9);
         RecommendationResponse resp = service.recommend(req);
         assertThat(resp.menuRecommendations()).hasSize(1);
