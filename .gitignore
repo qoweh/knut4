@@ -83,3 +83,9 @@ yarn-error.log*
 # 환경변수 파일
 .env
 .env.*.local
+
+##################################
+# Spring Boot Secret Config
+##################################
+application-secret.yml
+**/application-secret.yml

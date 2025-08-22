@@ -1,0 +1,16 @@
+# Test specific configuration
+spring:
+  # Minimal logging for tests
+  logging:
+    level:
+      com.knut4.backend1: WARN
+      org.springframework: WARN
+
+# Test server configuration
+server:
+  port: 0  # Random port for tests
+
+# Disable management endpoints for tests
+management:
+  endpoints:
+    enabled-by-default: false

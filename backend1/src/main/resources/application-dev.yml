@@ -1,0 +1,22 @@
+# Development specific configuration
+spring:
+  # Enable detailed logging for development
+  logging:
+    level:
+      com.knut4.backend1: DEBUG
+      org.springframework.web: DEBUG
+      org.hibernate.SQL: DEBUG
+      org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+
+# Development server configuration
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+# Development specific features
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
