@@ -1,5 +1,6 @@
 package com.knut4.backend.common.security;
 
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import javax.crypto.SecretKey;
@@ -42,8 +43,17 @@ public class JwtTokenProvider implements InitializingBean {
     }
 
     public String validateAndGetSubject(String token) {
+        return parseClaims(token).getSubject();
+    }
+
+    public Instant getExpirationInstant(String token) {
+        Date exp = parseClaims(token).getExpiration();
+        return exp.toInstant();
+    }
+
+    private Claims parseClaims(String token) {
         return Jwts.parser().verifyWith(key).build()
                 .parseSignedClaims(token)
-                .getPayload().getSubject();
+                .getPayload();
     }
 }
