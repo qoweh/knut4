@@ -8,6 +8,13 @@ export default function App() {
   const [lon, setLon] = useState<number | null>(null);
   const [token, setToken] = useState<string>('');
   const [result, setResult] = useState<any>(null);
+  const [shareToken, setShareToken] = useState<string>('');
+  const [prefs, setPrefs] = useState<any>(null);
+  const [likes, setLikes] = useState('');
+  const [dislikes, setDislikes] = useState('');
+  const [allergies, setAllergies] = useState('');
+  const [dietTypes, setDietTypes] = useState('');
+  const [notes, setNotes] = useState('');
 
   const moodOptions = ['든든', '가볍', '달달', '매콤'];
 
@@ -32,10 +39,29 @@ export default function App() {
     if (resp.ok) setResult(await resp.json());
   };
 
+  const fetchPrefs = async () => {
+    if (!token) return;
+    const resp = await fetch('/api/private/preferences', { headers: { 'Authorization': `Bearer ${token}` } });
+    if (resp.ok) {
+      const data = await resp.json();
+      setPrefs(data);
+      if (data) { setLikes(data.likes||''); setDislikes(data.dislikes||''); setAllergies(data.allergies||''); setDietTypes(data.dietTypes||''); setNotes(data.notes||''); }
+    }
+  };
+  const savePrefs = async () => {
+    const resp = await fetch('/api/private/preferences', { method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`}, body: JSON.stringify({likes,dislikes,allergies,dietTypes,notes})});
+    if (resp.ok) { await fetchPrefs(); }
+  };
+  const shareLatest = async () => {
+    if (!token) return;
+    const resp = await fetch('/api/private/recommendations/share', { method:'POST', headers:{ 'Authorization': `Bearer ${token}` }});
+    if (resp.ok) { const d = await resp.json(); setShareToken(d.token); }
+  };
+
   return (
     <div style={{ fontFamily: 'sans-serif', padding: 24 }}>
       <h1>오늘 뭐 먹지?</h1>
-      <section>
+  <section>
         <h3>조건 입력</h3>
         <div>날씨: <input value={weather} onChange={e => setWeather(e.target.value)} placeholder="맑음" /></div>
         <div>예산: <input type="number" value={budget} onChange={e => setBudget(parseInt(e.target.value, 10))} /></div>
@@ -47,8 +73,29 @@ export default function App() {
       </section>
       {result && <section>
         <h3>추천 결과</h3>
-        <pre style={{ background: '#f3f3f3', padding: 12 }}>{JSON.stringify(result, null, 2)}</pre>
+        {result.menuRecommendations?.map((m:any) => (
+          <div key={m.menuName} style={{border:'1px solid #ddd', marginBottom:8, padding:8}}>
+            <strong>{m.menuName}</strong>
+            <div style={{fontSize:12,color:'#555'}}>{m.reason}</div>
+            <ul>
+              {m.places?.map((p:any)=>(<li key={p.name}>{p.name} - {Math.round(p.distanceMeters)}m / {p.durationMinutes}분</li>))}
+            </ul>
+          </div>
+        ))}
+        <button onClick={shareLatest}>공유 링크 생성</button>
+        {shareToken && <div>공유 토큰: {shareToken} (URL: /api/public/recommendations/shared/{shareToken})</div>}
       </section>}
+
+      <section style={{marginTop:32}}>
+        <h3>선호도 (Preferences)</h3>
+        <button onClick={fetchPrefs}>불러오기</button>
+        <div>좋아하는 것(likes): <input value={likes} onChange={e=>setLikes(e.target.value)} placeholder="김치, 치즈" /></div>
+        <div>싫어하는 것(dislikes): <input value={dislikes} onChange={e=>setDislikes(e.target.value)} /></div>
+        <div>알레르기(allergies): <input value={allergies} onChange={e=>setAllergies(e.target.value)} /></div>
+        <div>식단(dietTypes): <input value={dietTypes} onChange={e=>setDietTypes(e.target.value)} placeholder="vegan,keto" /></div>
+        <div>메모(notes): <input value={notes} onChange={e=>setNotes(e.target.value)} /></div>
+        <button onClick={savePrefs}>저장</button>
+      </section>
     </div>
   );
 }

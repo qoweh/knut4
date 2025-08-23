@@ -7,7 +7,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Component
-@ConditionalOnProperty(name = "app.llm.enabled", havingValue = "true")
+// Default stub when app.llm.mode not specified OR explicitly set to 'stub'
+@ConditionalOnProperty(name = "app.llm.mode", havingValue = "stub", matchIfMissing = true)
 public class StubLlmClient implements LlmClient {
     private static final List<String> CANDIDATES = List.of("김치찌개", "된장찌개", "비빔밥", "불고기", "파스타", "초밥", "라멘");
 
