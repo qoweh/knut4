@@ -10,17 +10,28 @@ import java.util.List;
 @ConditionalOnProperty(name = "app.llm.enabled", havingValue = "true")
 public class StubLlmClient implements LlmClient {
     private static final List<String> CANDIDATES = List.of("김치찌개", "된장찌개", "비빔밥", "불고기", "파스타", "초밥", "라멘");
+
     @Override
-    public List<String> suggestMenus(List<String> moods, String weather, int max) {
-        List<String> out = new ArrayList<>();
+    public List<LlmMenuSuggestion> suggestMenus(List<String> moods,
+                                                String weather,
+                                                Integer budget,
+                                                Double latitude,
+                                                Double longitude,
+                                                List<String> nearbyPlaceNames,
+                                                int max) {
+        List<LlmMenuSuggestion> out = new ArrayList<>();
+        String moodSeed = (moods != null && !moods.isEmpty()) ? moods.get(0) : "";
         for (String c : CANDIDATES) {
             if (out.size() >= max) break;
-            if (moods != null && !moods.isEmpty()) {
-                if (!c.contains(moods.get(0).substring(0, 1))) continue;
-            }
-            out.add(c);
+            if (!moodSeed.isBlank() && !c.contains(moodSeed.substring(0,1))) continue;
+            String reason = String.format("%s 은/는 %s 날씨와 %s 분위기에 잘 맞고 예산 %s원 범위에서 선택 쉬움", c, weather, moodSeed.isBlank()?"일반":moodSeed, budget==null?"?":budget);
+            out.add(new LlmMenuSuggestion(c, reason));
         }
-        if (out.isEmpty()) out.addAll(CANDIDATES.subList(0, Math.min(max, CANDIDATES.size())));
+        if (out.isEmpty()) {
+            for (String c : CANDIDATES.subList(0, Math.min(max, CANDIDATES.size()))) {
+                out.add(new LlmMenuSuggestion(c, String.format("%s 기본 추천", c)));
+            }
+        }
         return out.subList(0, Math.min(out.size(), max));
     }
 }

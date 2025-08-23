@@ -3,6 +3,7 @@ package com.knut4.backend.domain.recommendation;
 import com.knut4.backend.domain.place.MapProvider;
 import com.knut4.backend.domain.place.PlaceResult;
 import com.knut4.backend.domain.llm.LlmClient;
+import com.knut4.backend.domain.llm.LlmMenuSuggestion;
 import com.knut4.backend.domain.recommendation.dto.RecommendationRequest;
 import com.knut4.backend.domain.preference.repository.PreferenceRepository;
 import com.knut4.backend.domain.preference.entity.Preference;
@@ -46,7 +47,7 @@ public class RecommendationService {
 
     public RecommendationResponse recommend(RecommendationRequest request) {
         // derive menu candidates
-        List<String> menus;
+    List<LlmMenuSuggestion> suggestions;
         if (llmClient != null) {
             // Future: augment LLM prompt with extended preferences (likes, diet types, spice levels, notes)
             // Currently LlmClient interface only supports moods & weather; enhancement would require interface change.
@@ -65,30 +66,38 @@ public class RecommendationService {
                     }
                 }
             }
-            menus = llmClient.suggestMenus(moodContext, request.weather(), 4);
+            // prefetch a broader nearby sample (keyword generic) for context (fallback if fails)
+            List<String> nearbyNames;
+            try {
+                var samplePlaces = mapProvider.search("음식", request.latitude(), request.longitude(), 1500);
+                nearbyNames = samplePlaces.stream().map(PlaceResult::name).limit(15).toList();
+            } catch (Exception e) {
+                nearbyNames = List.of();
+            }
+            suggestions = llmClient.suggestMenus(moodContext, request.weather(), request.budget(), request.latitude(), request.longitude(), nearbyNames, 4);
         } else {
             String base = request.moods() != null && !request.moods().isEmpty() ? request.moods().get(0) : "맛있는";
-            menus = List.of(base);
+            suggestions = List.of(new LlmMenuSuggestion(base, base + " 기본 추천"));
         }
-        // preferences filter
+        // preferences filter (filter by menu name)
         Preference pref = currentUserPreference();
-        List<String> filtered = menus;
+        List<LlmMenuSuggestion> filtered = suggestions;
         boolean filteredOut = false;
         if (pref != null) {
             var dislikes = java.util.Set.of(pref.dislikeArray());
             var allergies = java.util.Set.of(pref.allergyArray());
-            filtered = menus.stream().filter(m ->
-                    dislikes.stream().noneMatch(d -> !d.isBlank() && m.contains(d)) &&
-                            allergies.stream().noneMatch(a -> !a.isBlank() && m.contains(a))
+            filtered = suggestions.stream().filter(s ->
+                    dislikes.stream().noneMatch(d -> !d.isBlank() && s.menu().contains(d)) &&
+                            allergies.stream().noneMatch(a -> !a.isBlank() && s.menu().contains(a))
             ).toList();
             if (filtered.isEmpty()) { // all filtered -> fallback to original but mark conflict
                 filteredOut = true;
-                filtered = menus;
+                filtered = suggestions;
             }
         }
         final boolean noteConflict = filteredOut;
-        List<RecommendationResponse.MenuRecommendation> recs = filtered.stream().map(menu -> buildMenuRecommendation(menu, request, noteConflict)).collect(Collectors.toList());
-    persistHistory(request, menus.get(0));
+        List<RecommendationResponse.MenuRecommendation> recs = filtered.stream().map(s -> buildMenuRecommendation(s.menu(), s.reason(), request, noteConflict)).collect(Collectors.toList());
+        persistHistory(request, filtered.isEmpty()? suggestions.get(0).menu() : filtered.get(0).menu());
         return new RecommendationResponse(recs);
     }
 
@@ -150,7 +159,7 @@ public class RecommendationService {
         return sr.getHistory();
     }
 
-    private RecommendationResponse.MenuRecommendation buildMenuRecommendation(String menu, RecommendationRequest request, boolean noteConflict) {
+    private RecommendationResponse.MenuRecommendation buildMenuRecommendation(String menu, String llmReason, RecommendationRequest request, boolean noteConflict) {
         String keyword = menu + " 음식";
         List<PlaceResult> places;
         try {
@@ -162,17 +171,19 @@ public class RecommendationService {
         List<RecommendationResponse.Place> mapped = places.stream()
                 .map(p -> new RecommendationResponse.Place(p.name(), p.latitude(), p.longitude(), p.address(), p.distanceMeters(), estimateDurationMinutes(p.distanceMeters())))
                 .collect(Collectors.toList());
-        return new RecommendationResponse.MenuRecommendation(menu, reason(menu, request.weather(), request.budget(), noteConflict), mapped);
+        return new RecommendationResponse.MenuRecommendation(menu, enrichReason(menu, llmReason, request.weather(), request.budget(), noteConflict), mapped);
     }
 
     private double estimateDurationMinutes(double distanceMeters) {
         return Math.round((distanceMeters / 67.0) * 10.0) / 10.0; // 4km/h
     }
 
-    private String reason(String menu, String weather, Integer budget, boolean conflict) {
-        String base = String.format("'%s' 메뉴는 현재 날씨(%s)에 잘 어울리고 예산 %d원 범위 내 후보를 제공합니다", menu, weather, budget);
-        if (conflict) base += " (선호도와 충돌하여 기본 추천 유지)";
-        return base;
+    private String enrichReason(String menu, String llmReason, String weather, Integer budget, boolean conflict) {
+        StringBuilder sb = new StringBuilder();
+        if (llmReason != null && !llmReason.isBlank()) sb.append(llmReason.trim()); else sb.append(menu).append(" 기본 추천");
+        sb.append(" | 날씨:").append(weather).append(" 예산:").append(budget).append("원");
+        if (conflict) sb.append(" (선호도와 충돌하여 필터 무시)");
+        return sb.toString();
     }
 
     private void persistHistory(RecommendationRequest request, String chosenMenu) {
