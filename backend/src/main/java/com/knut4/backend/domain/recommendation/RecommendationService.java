@@ -144,11 +144,10 @@ public class RecommendationService {
     }
 
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
-    public com.knut4.backend.domain.recommendation.dto.SharedRecommendationResponse getSharedDto(String token) {
+    public RecommendationHistory getShared(String token) {
         SharedRecommendation sr = sharedRepository.findByToken(token)
                 .orElseThrow(() -> new ResourceNotFoundException("Share token not found"));
-        var h = sr.getHistory(); // initialize within transaction
-        return new com.knut4.backend.domain.recommendation.dto.SharedRecommendationResponse(token, h.getId(), h.getWeather(), h.getMoods(), h.getBudget(), h.getLatitude(), h.getLongitude(), h.getCreatedAt());
+        return sr.getHistory();
     }
 
     private RecommendationResponse.MenuRecommendation buildMenuRecommendation(String menu, RecommendationRequest request, boolean noteConflict) {
