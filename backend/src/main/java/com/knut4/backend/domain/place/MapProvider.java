@@ -3,7 +3,7 @@ package com.knut4.backend.domain.place;
 import java.util.List;
 
 /**
- * Strategy interface for map place search so we can plug different providers (Naver, Kakao...).
+ * Strategy interface for map place search (currently Naver implementation only; Kakao deferred/out of scope).
  */
 public interface MapProvider {
     /**

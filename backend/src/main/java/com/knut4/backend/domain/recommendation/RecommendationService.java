@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
 @Service
 public class RecommendationService {
 
-    private final MapProvider mapProvider; // injected strategy (Naver or Kakao)
+    private final MapProvider mapProvider; // injected strategy (currently Naver only)
     private final RecommendationHistoryRepository historyRepository;
     private final LlmClient llmClient; // may be null when disabled
     private final UserRepository userRepository;
