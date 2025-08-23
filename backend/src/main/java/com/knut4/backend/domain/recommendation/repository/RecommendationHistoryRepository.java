@@ -10,4 +10,5 @@ import java.util.Optional;
 public interface RecommendationHistoryRepository extends JpaRepository<RecommendationHistory, Long> {
 	Page<RecommendationHistory> findByUserOrderByCreatedAtDesc(User user, Pageable pageable);
 	Optional<RecommendationHistory> findFirstByUserOrderByCreatedAtDesc(User user);
+	long countByUser(User user);
 }
