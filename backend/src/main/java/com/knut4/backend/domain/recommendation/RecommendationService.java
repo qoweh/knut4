@@ -66,11 +66,21 @@ public class RecommendationService {
                     }
                 }
             }
-            // prefetch a broader nearby sample (keyword generic) for context (fallback if fails)
+            // Prefetch a broader nearby sample with multiple lightweight queries derived from moods for richer LLM context.
             List<String> nearbyNames;
             try {
-                var samplePlaces = mapProvider.search("음식", request.latitude(), request.longitude(), 1500);
-                nearbyNames = samplePlaces.stream().map(PlaceResult::name).limit(15).toList();
+                java.util.Set<String> acc = new java.util.LinkedHashSet<>();
+                acc.addAll(mapProvider.search("맛집", request.latitude(), request.longitude(), 1500).stream().map(PlaceResult::name).toList());
+                acc.addAll(mapProvider.search("음식", request.latitude(), request.longitude(), 1500).stream().map(PlaceResult::name).toList());
+                if (request.moods() != null) {
+                    for (String mood : request.moods()) {
+                        String q = moodToQuery(mood);
+                        if (q != null) {
+                            acc.addAll(mapProvider.search(q, request.latitude(), request.longitude(), 1500).stream().map(PlaceResult::name).toList());
+                        }
+                    }
+                }
+                nearbyNames = acc.stream().filter(s -> s != null && !s.isBlank()).limit(30).toList();
             } catch (Exception e) {
                 nearbyNames = List.of();
             }
@@ -252,5 +262,16 @@ public class RecommendationService {
             }
         } catch (Exception ignored) {}
         return null;
+    }
+
+    // Map a mood token to an exploratory search keyword to diversify place name sampling.
+    private String moodToQuery(String mood) {
+        if (mood == null || mood.isBlank()) return null;
+        mood = mood.toLowerCase();
+        if (mood.contains("매콤")) return "매운맛";
+        if (mood.contains("든든")) return "한식";
+        if (mood.contains("가볍")) return "샐러드";
+        if (mood.contains("달달")) return "디저트";
+        return null; // fallback: rely on generic queries
     }
 }
