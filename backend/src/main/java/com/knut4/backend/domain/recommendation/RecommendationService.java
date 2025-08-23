@@ -4,6 +4,7 @@ import com.knut4.backend.domain.place.MapProvider;
 import com.knut4.backend.domain.place.PlaceResult;
 import com.knut4.backend.domain.llm.LlmClient;
 import com.knut4.backend.domain.llm.LlmMenuSuggestion;
+import com.knut4.backend.domain.llm.StructuredMenuPlace;
 import com.knut4.backend.domain.recommendation.dto.RecommendationRequest;
 import com.knut4.backend.domain.preference.repository.PreferenceRepository;
 import com.knut4.backend.domain.preference.entity.Preference;
@@ -46,8 +47,10 @@ public class RecommendationService {
     }
 
     public RecommendationResponse recommend(RecommendationRequest request) {
+        long tStart = System.nanoTime();
         // derive menu candidates
     List<LlmMenuSuggestion> suggestions;
+    List<StructuredMenuPlace> structured = null;
         if (llmClient != null) {
             // Future: augment LLM prompt with extended preferences (likes, diet types, spice levels, notes)
             // Currently LlmClient interface only supports moods & weather; enhancement would require interface change.
@@ -84,7 +87,13 @@ public class RecommendationService {
             } catch (Exception e) {
                 nearbyNames = List.of();
             }
-            suggestions = llmClient.suggestMenus(moodContext, request.weather(), request.budget(), request.latitude(), request.longitude(), nearbyNames, 4);
+            // Build place sample JSON
+            String placeSamplesJson = toPlaceSampleJson(nearbyNames, request);
+            // Ask for up to 10 raw menus (simple) first as fallback
+            suggestions = llmClient.suggestMenus(moodContext, request.weather(), request.budget(), request.latitude(), request.longitude(), nearbyNames, 10);
+            try {
+                structured = llmClient.suggestMenusWithPlaces(moodContext, request.weather(), request.budget(), request.latitude(), request.longitude(), placeSamplesJson, 10);
+            } catch (Exception ignore) {}
         } else {
             String base = request.moods() != null && !request.moods().isEmpty() ? request.moods().get(0) : "맛있는";
             suggestions = List.of(new LlmMenuSuggestion(base, base + " 기본 추천"));
@@ -106,8 +115,16 @@ public class RecommendationService {
             }
         }
         final boolean noteConflict = filteredOut;
-        List<RecommendationResponse.MenuRecommendation> recs = filtered.stream().map(s -> buildMenuRecommendation(s.menu(), s.reason(), request, noteConflict)).collect(Collectors.toList());
-        persistHistory(request, filtered.isEmpty()? suggestions.get(0).menu() : filtered.get(0).menu());
+        // limit to top4 after filtering
+        List<LlmMenuSuggestion> top = filtered.stream().limit(4).toList();
+        final List<StructuredMenuPlace> structuredFinal = structured;
+        List<RecommendationResponse.MenuRecommendation> recs = top.stream().map(s -> {
+            List<String> mappedPlaces = extractStructuredPlaces(structuredFinal, s.menu());
+            return buildMenuRecommendation(s.menu(), s.reason(), request, noteConflict, mappedPlaces);
+        }).collect(Collectors.toList());
+        persistHistory(request, top.isEmpty()? suggestions.get(0).menu() : top.get(0).menu());
+        long elapsedMs = (System.nanoTime()-tStart)/1_000_000;
+        org.slf4j.LoggerFactory.getLogger(RecommendationService.class).info("recommend pipeline completed in {} ms (menusRaw={} filtered={})", elapsedMs, suggestions.size(), top.size());
         return new RecommendationResponse(recs);
     }
 
@@ -169,7 +186,7 @@ public class RecommendationService {
         return sr.getHistory();
     }
 
-    private RecommendationResponse.MenuRecommendation buildMenuRecommendation(String menu, String llmReason, RecommendationRequest request, boolean noteConflict) {
+    private RecommendationResponse.MenuRecommendation buildMenuRecommendation(String menu, String llmReason, RecommendationRequest request, boolean noteConflict, List<String> preselectedPlaceNames) {
         String keyword = menu + " 음식";
         List<PlaceResult> places;
         try {
@@ -177,6 +194,17 @@ public class RecommendationService {
         } catch (Exception e) {
             // fallback to empty list to satisfy non-functional requirement (resilience)
             places = List.of();
+        }
+        // If structured LLM selected places exist, prioritize them order-wise
+        if (preselectedPlaceNames != null && !preselectedPlaceNames.isEmpty()) {
+            var map = places.stream().collect(Collectors.toMap(PlaceResult::name, p->p, (a,b)->a));
+            List<PlaceResult> prioritized = new java.util.ArrayList<>();
+            for (String n : preselectedPlaceNames) {
+                if (map.containsKey(n)) prioritized.add(map.get(n));
+            }
+            // append remaining
+            for (PlaceResult p : places) if (prioritized.stream().noneMatch(x->x.name().equals(p.name()))) prioritized.add(p);
+            places = prioritized;
         }
         List<RecommendationResponse.Place> mapped = places.stream()
                 .map(p -> new RecommendationResponse.Place(p.name(), p.latitude(), p.longitude(), p.address(), p.distanceMeters(), estimateDurationMinutes(p.distanceMeters())))
@@ -262,6 +290,26 @@ public class RecommendationService {
             }
         } catch (Exception ignored) {}
         return null;
+    }
+
+    private String toPlaceSampleJson(List<String> names, RecommendationRequest request) {
+        // Basic JSON array of objects: name only for now (distance unknown here unless we change search to keep objects)
+        StringBuilder sb = new StringBuilder("[");
+        for (int i=0;i<names.size();i++) {
+            if (i>0) sb.append(',');
+            sb.append('{').append("\"name\":\"").append(names.get(i).replace("\"","\\\""))
+                    .append("\"}");
+        }
+        sb.append(']');
+        return sb.toString();
+    }
+
+    private List<String> extractStructuredPlaces(List<StructuredMenuPlace> structured, String menu) {
+        if (structured == null) return List.of();
+        for (StructuredMenuPlace smp : structured) {
+            if (smp.menu().equalsIgnoreCase(menu)) return smp.places();
+        }
+        return List.of();
     }
 
     // Map a mood token to an exploratory search keyword to diversify place name sampling.

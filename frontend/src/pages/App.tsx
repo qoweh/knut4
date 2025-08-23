@@ -1,4 +1,8 @@
 import React, { useState, useEffect } from 'react';
+// Map components (loaded lazily to avoid SSR issues)
+// @ts-ignore
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
 
 export default function App() {
   const [weather, setWeather] = useState('');
@@ -28,6 +32,7 @@ export default function App() {
   const [allergies, setAllergies] = useState('');
   const [dietTypes, setDietTypes] = useState('');
   const [notes, setNotes] = useState('');
+  const [useCurrentLocation, setUseCurrentLocation] = useState(true);
 
   const moodOptions = ['든든', '가볍', '달달', '매콤'];
 
@@ -86,7 +91,19 @@ export default function App() {
         <div>기분:
           {moodOptions.map(m => <button key={m} onClick={() => toggleMood(m)} style={{ fontWeight: moods.includes(m) ? 'bold' : 'normal' }}>{m}</button>)}
         </div>
-        <div>위치: {lat && lon ? `${lat.toFixed(4)}, ${lon.toFixed(4)}` : <button onClick={detectLocation}>위치 가져오기</button>}</div>
+        <div>
+          <label>
+            <input type="checkbox" checked={useCurrentLocation} onChange={e=>setUseCurrentLocation(e.target.checked)} /> 현재 위치 사용
+          </label>
+          {useCurrentLocation ? (
+            <span style={{marginLeft:8}}>{lat && lon ? `${lat.toFixed(4)}, ${lon.toFixed(4)}` : <button onClick={detectLocation}>위치 가져오기</button>}</span>
+          ) : (
+            <span style={{marginLeft:8}}>
+              위도 <input style={{width:100}} value={lat??''} onChange={e=>setLat(parseFloat(e.target.value)||0)} />
+              경도 <input style={{width:100}} value={lon??''} onChange={e=>setLon(parseFloat(e.target.value)||0)} />
+            </span>
+          )}
+        </div>
         <button onClick={recommend} disabled={!lat || !lon}>추천 받기</button>
   </section>)}
   {view==='main' && result && (<section>
@@ -98,6 +115,16 @@ export default function App() {
             <ul>
               {m.places?.map((p:any)=>(<li key={p.name}>{p.name} - {Math.round(p.distanceMeters)}m / {p.durationMinutes}분</li>))}
             </ul>
+            {m.places && m.places.length>0 && (
+              <MapContainer style={{height:200, width:'100%'}} center={[m.places[0].latitude, m.places[0].longitude]} zoom={15} scrollWheelZoom={false}>
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap" />
+                {m.places.slice(0,5).map((p:any)=>(
+                  <Marker key={p.name} position={[p.latitude, p.longitude]}>
+                    <Popup>{p.name}</Popup>
+                  </Marker>
+                ))}
+              </MapContainer>
+            )}
           </div>
         ))}
         <button onClick={shareLatest}>공유 링크 생성</button>

@@ -33,7 +33,8 @@ public class HttpOpenAiLikeLlmClient implements LlmClient {
     @SuppressWarnings("unchecked")
     @Override
     public List<LlmMenuSuggestion> suggestMenus(List<String> moods, String weather, Integer budget, Double latitude, Double longitude, List<String> nearbyPlaceNames, int max) {
-        try {
+    long start = System.nanoTime();
+    try {
             String prompt = buildPrompt(moods, weather, budget, latitude, longitude, nearbyPlaceNames, max);
             Map<String,Object> payload = Map.of(
                     "model", model.isBlank()?"gpt4all":model,
@@ -49,7 +50,10 @@ public class HttpOpenAiLikeLlmClient implements LlmClient {
                     .timeout(Duration.ofSeconds(15))
                     .onErrorResume(e -> Mono.empty())
                     .block();
-            if (resp == null) return fallback(moods, weather, max);
+            if (resp == null) {
+                org.slf4j.LoggerFactory.getLogger(HttpOpenAiLikeLlmClient.class).warn("LLM empty response, using fallback");
+                return fallback(moods, weather, max);
+            }
             Object choices = resp.get("choices");
             if (!(choices instanceof List<?> list) || list.isEmpty()) return fallback(moods, weather, max);
             // Expect assistant content with JSON lines or bullet list; we parse naive lines
@@ -63,7 +67,12 @@ public class HttpOpenAiLikeLlmClient implements LlmClient {
             } else content = first.toString();
             return parseContent(content, max);
         } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger(HttpOpenAiLikeLlmClient.class).error("LLM suggestMenus error: {}", e.toString());
             return fallback(moods, weather, max);
+        }
+        finally {
+            long ms = (System.nanoTime()-start)/1_000_000;
+            org.slf4j.LoggerFactory.getLogger(HttpOpenAiLikeLlmClient.class).info("suggestMenus completed in {} ms", ms);
         }
     }
 
@@ -107,6 +116,84 @@ public class HttpOpenAiLikeLlmClient implements LlmClient {
         List<LlmMenuSuggestion> list = new ArrayList<>();
         String seed = (moods!=null && !moods.isEmpty())?moods.get(0):"기본";
         for (int i=0;i<max;i++) list.add(new LlmMenuSuggestion(seed+"메뉴"+(i+1), weather+" 날씨 기본"));
+        return list;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public List<StructuredMenuPlace> suggestMenusWithPlaces(List<String> moods, String weather, Integer budget, Double latitude, Double longitude, String placeSamplesJson, int menuMax) {
+    long start = System.nanoTime();
+        String prompt = "당신은 음식 추천 시스템입니다. 아래 JSON 배열의 장소 리스트를 참고하여 최대 " + menuMax + "개의 메뉴를 제안하고 각 메뉴에 잘 맞는 장소 1~2개를 선택하세요.\n" +
+                "출력 형식: 메뉴명 | 장소1,장소2 | 간단이유  (장소2는 선택적)\n" +
+                "조건: 날씨="+weather+", 예산="+(budget==null?"?":budget)+", 기분="+(moods==null?"":String.join(",", moods))+"\n" +
+                "장소목록(JSON):\n" + placeSamplesJson + "\n" +
+                "메뉴는 중복 없이 한국어로, 이유는 25자 내.\n";
+        try {
+            Map<String,Object> payload = Map.of(
+                    "model", model.isBlank()?"gpt4all":model,
+                    "messages", List.of(Map.of("role","user","content", prompt)),
+                    "max_tokens", 400,
+                    "temperature", 0.4
+            );
+            Map<String,Object> resp = webClient.post().uri("/chat/completions")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(BodyInserters.fromValue(payload))
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .timeout(Duration.ofSeconds(25))
+                    .onErrorResume(e -> Mono.empty())
+                    .block();
+            if (resp == null) {
+                org.slf4j.LoggerFactory.getLogger(HttpOpenAiLikeLlmClient.class).warn("LLM structured empty response, fallback");
+                return fallbackStructured(moods, weather, menuMax);
+            }
+            Object choices = resp.get("choices");
+            if (!(choices instanceof List<?> list) || list.isEmpty()) return fallbackStructured(moods, weather, menuMax);
+            Object first = list.get(0);
+            String content;
+            if (first instanceof Map<?,?> m) {
+                Object message = m.get("message");
+                if (message instanceof Map<?,?> mm) content = String.valueOf(mm.get("content")); else content = String.valueOf(m.get("text"));
+            } else content = first.toString();
+            return parseStructured(content, menuMax);
+        } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger(HttpOpenAiLikeLlmClient.class).error("LLM structured error: {}", e.toString());
+            return fallbackStructured(moods, weather, menuMax);
+        }
+        finally {
+            long ms = (System.nanoTime()-start)/1_000_000;
+            org.slf4j.LoggerFactory.getLogger(HttpOpenAiLikeLlmClient.class).info("suggestMenusWithPlaces completed in {} ms", ms);
+        }
+    }
+
+    private List<StructuredMenuPlace> parseStructured(String content, int menuMax) {
+        List<StructuredMenuPlace> out = new ArrayList<>();
+        if (content == null) return out;
+        for (String raw : content.split("\n")) {
+            String line = raw.trim();
+            if (line.isBlank()) continue;
+            line = line.replaceAll("^[-*0-9. )]+", "");
+            String[] parts = line.split("\\|");
+            if (parts.length < 1) continue;
+            String menu = parts[0].trim();
+            List<String> places = List.of();
+            String reason = "";
+            if (parts.length >= 2) {
+                places = java.util.Arrays.stream(parts[1].split(","))
+                        .map(String::trim).filter(s->!s.isEmpty()).limit(2).toList();
+            }
+            if (parts.length >=3) reason = parts[2].trim(); else if (parts.length==2) reason = parts[1].trim();
+            if (menu.isEmpty()) continue;
+            out.add(new StructuredMenuPlace(menu, places, reason));
+            if (out.size() >= menuMax) break;
+        }
+        return out;
+    }
+
+    private List<StructuredMenuPlace> fallbackStructured(List<String> moods, String weather, int menuMax) {
+        List<StructuredMenuPlace> list = new ArrayList<>();
+        String seed = (moods!=null && !moods.isEmpty())?moods.get(0):"기본";
+        for (int i=0;i<menuMax;i++) list.add(new StructuredMenuPlace(seed+"메뉴"+(i+1), List.of(), weather+" 기본"));
         return list;
     }
 }
