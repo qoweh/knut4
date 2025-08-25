@@ -1,12 +1,14 @@
 version: '3.9'
+
+# Uses .env (copy from .env.example) to override defaults below when desired.
 services:
   db:
     image: mysql:8.3
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: knut4
-      MYSQL_USER: app
-      MYSQL_PASSWORD: app
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-knut4}
+      MYSQL_USER: ${MYSQL_USER:-app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-app}
     ports:
       - "3306:3306"
     volumes:
@@ -22,13 +24,13 @@ services:
       db:
         condition: service_healthy
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/knut4?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=UTC
-      SPRING_DATASOURCE_USERNAME: app
-      SPRING_DATASOURCE_PASSWORD: app
-      SPRING_PROFILES_ACTIVE: prod
-  APP_LLM_MODE: http
-  LLM_OPENAI_BASE_URL: http://gpt4all:4891/v1
-  LLM_MODEL: gpt4all
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:mysql://db:3306/knut4?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=UTC}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-app}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-app}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      APP_LLM_MODE: ${APP_LLM_MODE:-http}
+      LLM_OPENAI_BASE_URL: ${LLM_OPENAI_BASE_URL:-http://gpt4all:4891/v1}
+      LLM_MODEL: ${LLM_MODEL:-gpt4all}
     ports:
       - "8080:8080"
   frontend:
@@ -37,14 +39,17 @@ services:
       - backend
     ports:
       - "3000:80"
+    environment:
+      # Only used at runtime for potential feature flags; Vite build-time vars must be baked separately.
+      VITE_LLM_ENABLED: ${VITE_LLM_ENABLED:-true}
   gpt4all:
     image: ghcr.io/nomic-ai/gpt4all:latest
-    # Assuming image exposes server mode via env (if not, manual enable needed outside container)
     environment:
-      # Some images rely on desktop app; placeholder for server-ready image
       API_PORT: 4891
     ports:
       - "4891:4891"
+    volumes:
+      - gpt4all_models:/models
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:4891/v1/models" ]
       interval: 30s
@@ -52,3 +57,4 @@ services:
       retries: 5
 volumes:
   db_data:
+  gpt4all_models:
