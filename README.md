@@ -22,12 +22,12 @@ Container: Docker & docker-compose (upcoming)
 - [x] Recommendation history entity + persistence
 - [x] Unit tests (auth, recommendation service, map provider utils)
 - [x] Integration tests (auth + recommendation)
-- [ ] Frontend pages (Main, Auth, Results, My Page)
-- [ ] GPT4All integration to generate menu candidates & reasons
-- [ ] Kakao map provider implementation & provider selection
-- [ ] Docker / compose setup (FE/BE/DB/LLM)
-- [ ] My Page history & preferences APIs
-- [ ] Shareable recommendation links
+- [~] Frontend pages (Main + Results + Preferences partial) (Auth/My Page history pending)
+- [x] GPT4All integration abstraction + HTTP client (server container wiring experimental)
+- [ ] Kakao map provider implementation & provider selection (scoped out: Naver only for now)
+- [~] Docker / compose setup (FE/BE/DB/LLM – GPT4All container placeholder, requires manual server enable or proper image)
+- [x] Preferences APIs (CRUD upsert + fetch)
+- [x] Shareable recommendation links
 
 ### Running Backend (Dev)
 Create `backend/src/main/resources/application-secret.yml` (ignored) with:
