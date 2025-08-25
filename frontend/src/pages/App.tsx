@@ -1,16 +1,84 @@
-import React, { useState, useEffect } from 'react';
-// Map components (loaded lazily to avoid SSR issues)
-// @ts-ignore
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
+import React, { useState, useEffect, useRef } from 'react';
+import { useAuth } from '../auth/AuthContext';
 
-export default function App() {
-  const [weather, setWeather] = useState('');
+// Lightweight Naver Maps loader (client-side only)
+declare global {
+  interface Window { naver: any }
+}
+
+function useNaverMaps(apiKey?: string) {
+  const [ready, setReady] = useState(false);
+  useEffect(()=>{
+    if (typeof window === 'undefined') return;
+    if ((window as any).naver?.maps) { setReady(true); return; }
+    const existing = document.getElementById('naver-map-script');
+    if (existing) { existing.addEventListener('load', ()=>setReady(true)); return; }
+    const script = document.createElement('script');
+    script.id = 'naver-map-script';
+    script.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpClientId=${apiKey||'demo'}&submodules=geocoder`; // demo placeholder
+    script.async = true;
+    script.onload = () => setReady(true);
+    document.head.appendChild(script);
+  },[apiKey]);
+  return ready;
+}
+
+const MapView: React.FC<{places:any[], userLat?:number|null, userLon?:number|null}> = ({places, userLat, userLon}) => {
+  const mapRef = useRef<HTMLDivElement|null>(null);
+  const [mapObj, setMapObj] = useState<any>(null);
+  const ready = useNaverMaps(import.meta.env.VITE_NAVER_MAP_KEY);
+  useEffect(()=>{
+    if (!ready || !mapRef.current || !places.length) return;
+    if (!mapObj) {
+      const center = new window.naver.maps.LatLng(places[0].latitude, places[0].longitude);
+      const map = new window.naver.maps.Map(mapRef.current, { center, zoom: 15 });
+      setMapObj(map);
+      places.slice(0,5).forEach(p=> {
+        const marker = new window.naver.maps.Marker({ position: new window.naver.maps.LatLng(p.latitude, p.longitude), map, title: p.name });
+        const info = new window.naver.maps.InfoWindow({ content: `<div style=\"padding:4px;font-size:12px;\"><strong>${p.name}</strong><br/>${Math.round(p.distanceMeters)}m</div>`});
+        window.naver.maps.Event.addListener(marker, 'click', ()=>{
+          info.open(map, marker);
+        });
+      });
+      if (userLat && userLon) {
+        new window.naver.maps.Circle({
+          map,
+          center: new window.naver.maps.LatLng(userLat, userLon),
+          radius: 5,
+          strokeColor: '#2563eb', strokeWeight:2, fillColor:'#3b82f6', fillOpacity:0.5
+        });
+      }
+    } else {
+      // update markers by clearing & re-adding (simple approach)
+      while ((mapRef.current as any)?.firstChild) (mapRef.current as any).removeChild((mapRef.current as any).firstChild);
+      const center = new window.naver.maps.LatLng(places[0].latitude, places[0].longitude);
+      mapObj.setCenter(center);
+      places.slice(0,5).forEach(p=> {
+        const marker = new window.naver.maps.Marker({ position: new window.naver.maps.LatLng(p.latitude, p.longitude), map: mapObj, title: p.name });
+        const info = new window.naver.maps.InfoWindow({ content: `<div style=\"padding:4px;font-size:12px;\"><strong>${p.name}</strong><br/>${Math.round(p.distanceMeters)}m</div>`});
+        window.naver.maps.Event.addListener(marker, 'click', ()=> info.open(mapObj, marker));
+      });
+      if (userLat && userLon) {
+        new window.naver.maps.Circle({
+          map: mapObj,
+          center: new window.naver.maps.LatLng(userLat, userLon),
+          radius: 5,
+          strokeColor: '#2563eb', strokeWeight:2, fillColor:'#3b82f6', fillOpacity:0.5
+        });
+      }
+    }
+  },[ready, places, mapObj]);
+  return <div ref={mapRef} style={{height:200,width:'100%', border:'1px solid #ccc'}}>{!ready && '지도를 불러오는 중...'}</div>;
+};
+
+export default function App() { // Recommendation Page
+  // (Weather removed) No weather state needed; backend defaults internally.
   const [moods, setMoods] = useState<string[]>([]);
+  // Budget represented as maximum value selected from predefined ranges
   const [budget, setBudget] = useState<number>(10000);
   const [lat, setLat] = useState<number | null>(null);
   const [lon, setLon] = useState<number | null>(null);
-  const [token, setToken] = useState<string>('');
+  const { token } = useAuth();
   const [result, setResult] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [view, setView] = useState<'main'|'history'|'prefs'>('main');
@@ -36,23 +104,72 @@ export default function App() {
 
   const moodOptions = ['든든', '가볍', '달달', '매콤'];
 
+  const budgetRanges = [
+    { label: '~1만원', max: 10000 },
+    { label: '1~2만원', max: 20000 },
+    { label: '2~3만원', max: 30000 },
+    { label: '3~4만원', max: 40000 },
+    { label: '4만원 이상', max: 999999 }
+  ];
+
+  const styles = {
+    chipGroup: { display: 'flex', flexWrap: 'wrap' as const, gap: '6px', marginTop: 4 },
+    chip: (active:boolean) => ({
+      padding: '6px 14px',
+      borderRadius: 20,
+      border: active ? '1px solid #2563eb' : '1px solid #d1d5db',
+      background: active ? 'linear-gradient(90deg,#2563eb,#1d4ed8)' : '#f8fafc',
+      color: active ? '#fff' : '#1e293b',
+      cursor: 'pointer',
+      fontSize: 13,
+      lineHeight: 1.1,
+      fontWeight: active ? 600 : 400,
+      boxShadow: active ? '0 2px 4px rgba(37,99,235,0.35)' : '0 1px 2px rgba(0,0,0,0.08)',
+      transition: 'all .15s',
+      userSelect: 'none' as const
+    }),
+    chipMood: (active:boolean) => ({
+      padding: '10px 18px',
+      borderRadius: 14,
+      border: active ? '2px solid #f59e0b' : '2px solid transparent',
+      background: active ? 'linear-gradient(135deg,#fbbf24,#f59e0b)' : 'linear-gradient(135deg,#ffffff,#f1f5f9)',
+      color: '#111827',
+      cursor: 'pointer',
+      fontSize: 14,
+      fontWeight: 600,
+      position: 'relative' as const,
+      minWidth: 64,
+      textAlign: 'center' as const,
+      boxShadow: active ? '0 3px 6px rgba(245,158,11,0.4)' : '0 1px 3px rgba(0,0,0,0.12)',
+      transition: 'transform .15s, box-shadow .15s',
+    }),
+    moodEmoji: { fontSize: 16, marginRight: 4 },
+    sectionCard: {
+      background: '#f8fbfd',
+      padding: 16,
+      borderRadius: 6,
+      border: '1px solid #e2e8f0',
+      maxWidth: 600
+    }
+  };
+
   const toggleMood = (m: string) => {
     setMoods(prev => prev.includes(m) ? prev.filter(v => v !== m) : [...prev, m]);
   };
 
   const detectLocation = () => {
     navigator.geolocation.getCurrentPosition(pos => {
-      setLat(pos.coords.latitude);
-      setLon(pos.coords.longitude);
+      setLat(pos.coords.latitude); setLon(pos.coords.longitude);
     });
   };
+  useEffect(()=> { if (useCurrentLocation && (lat===null || lon===null)) detectLocation(); }, [useCurrentLocation]);
 
   const recommend = async () => {
     if (!token) { alert('로그인 필요'); return; }
     const resp = await fetch('/api/private/recommendations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ weather, moods, budget, latitude: lat, longitude: lon })
+  body: JSON.stringify({ weather: undefined, moods, budget, latitude: lat, longitude: lon })
     });
     if (resp.ok) setResult(await resp.json());
   };
@@ -77,35 +194,58 @@ export default function App() {
   };
 
   return (
-    <div style={{ fontFamily: 'sans-serif', padding: 24 }}>
-      <h1>오늘 뭐 먹지?</h1>
-      <nav style={{marginBottom:16}}>
-        <button onClick={()=>setView('main')}>추천</button>
-        <button onClick={()=>setView('history')}>히스토리</button>
-        <button onClick={()=>setView('prefs')}>선호도</button>
-      </nav>
-  {view==='main' && (<section>
-        <h3>조건 입력</h3>
-        <div>날씨: <input value={weather} onChange={e => setWeather(e.target.value)} placeholder="맑음" /></div>
-        <div>예산: <input type="number" value={budget} onChange={e => setBudget(parseInt(e.target.value, 10))} /></div>
-        <div>기분:
-          {moodOptions.map(m => <button key={m} onClick={() => toggleMood(m)} style={{ fontWeight: moods.includes(m) ? 'bold' : 'normal' }}>{m}</button>)}
+    <div style={{ fontFamily: 'sans-serif' }}>
+      <h2 style={{marginTop:0}}>메뉴 추천</h2>
+  {view==='main' && (
+    <section style={styles.sectionCard}>
+      <h3 style={{marginTop:0}}>조건 입력</h3>
+  {/* Weather UI removed */}
+      <div style={{marginBottom:12}}>
+        <strong>예산 (최대)</strong>:
+        <div style={styles.chipGroup}>
+          {budgetRanges.map(r => (
+            <div key={r.label} onClick={()=>setBudget(r.max)} style={styles.chip(budget===r.max)}>{r.label}</div>
+          ))}
         </div>
-        <div>
-          <label>
-            <input type="checkbox" checked={useCurrentLocation} onChange={e=>setUseCurrentLocation(e.target.checked)} /> 현재 위치 사용
-          </label>
-          {useCurrentLocation ? (
-            <span style={{marginLeft:8}}>{lat && lon ? `${lat.toFixed(4)}, ${lon.toFixed(4)}` : <button onClick={detectLocation}>위치 가져오기</button>}</span>
-          ) : (
-            <span style={{marginLeft:8}}>
-              위도 <input style={{width:100}} value={lat??''} onChange={e=>setLat(parseFloat(e.target.value)||0)} />
-              경도 <input style={{width:100}} value={lon??''} onChange={e=>setLon(parseFloat(e.target.value)||0)} />
-            </span>
-          )}
+        <div style={{fontSize:11,color:'#64748b',marginTop:4}}>선택된 최대 예산: {budget>=999999? '4만원 이상' : `${budget.toLocaleString()}원`}</div>
+      </div>
+      <div style={{marginBottom:12}}>
+        <strong>기분</strong>:
+        <div style={styles.chipGroup}>
+          {moodOptions.map(m => {
+            const active = moods.includes(m);
+            const emoji = m==='든든'?'🍲': m==='가볍'?'🥗': m==='달달'?'🍰':'🌶️';
+            return (
+              <div key={m} onClick={()=>toggleMood(m)} style={styles.chipMood(active)}
+                onMouseDown={e=> (e.currentTarget.style.transform='scale(.94)')}
+                onMouseUp={e=> (e.currentTarget.style.transform='scale(1)')}
+                onMouseLeave={e=> (e.currentTarget.style.transform='scale(1)')}>
+                <span style={styles.moodEmoji}>{emoji}</span>{m}
+                {active && <span style={{position:'absolute',top:4,right:6,fontSize:10,color:'#92400e'}}>선택</span>}
+              </div>
+            );
+          })}
         </div>
-        <button onClick={recommend} disabled={!lat || !lon}>추천 받기</button>
-  </section>)}
+        <div style={{fontSize:11,color:'#64748b',marginTop:4}}>여러 개 선택 가능</div>
+      </div>
+      <div style={{marginBottom:12}}>
+        <label>
+          <input type="checkbox" checked={useCurrentLocation} onChange={e=>setUseCurrentLocation(e.target.checked)} /> 현재 위치 사용
+        </label>
+        {useCurrentLocation ? (
+          <span style={{marginLeft:8,fontSize:12}}>{lat && lon ? `${lat.toFixed(4)}, ${lon.toFixed(4)}` : '위치 확인 중 / 권한 필요'}</span>
+        ) : (
+          <span style={{marginLeft:8}}>
+            위도 <input style={{width:100}} value={lat??''} onChange={e=>setLat(parseFloat(e.target.value)||0)} />
+            경도 <input style={{width:100,marginLeft:4}} value={lon??''} onChange={e=>setLon(parseFloat(e.target.value)||0)} />
+          </span>
+        )}
+      </div>
+      <button onClick={recommend} disabled={!lat || !lon} style={{padding:'10px 20px',background:'#2563eb',color:'#fff',border:'none',borderRadius:6,cursor: (!lat||!lon)?'not-allowed':'pointer', boxShadow:'0 2px 4px rgba(0,0,0,0.2)'}}>
+        추천 받기
+      </button>
+    </section>
+  )}
   {view==='main' && result && (<section>
         <h3>추천 결과</h3>
         {result.menuRecommendations?.map((m:any) => (
@@ -115,16 +255,7 @@ export default function App() {
             <ul>
               {m.places?.map((p:any)=>(<li key={p.name}>{p.name} - {Math.round(p.distanceMeters)}m / {p.durationMinutes}분</li>))}
             </ul>
-            {m.places && m.places.length>0 && (
-              <MapContainer style={{height:200, width:'100%'}} center={[m.places[0].latitude, m.places[0].longitude]} zoom={15} scrollWheelZoom={false}>
-                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap" />
-                {m.places.slice(0,5).map((p:any)=>(
-                  <Marker key={p.name} position={[p.latitude, p.longitude]}>
-                    <Popup>{p.name}</Popup>
-                  </Marker>
-                ))}
-              </MapContainer>
-            )}
+            {m.places && m.places.length>0 && (<MapView places={m.places} userLat={lat} userLon={lon} />)}
           </div>
         ))}
         <button onClick={shareLatest}>공유 링크 생성</button>

@@ -15,6 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @ActiveProfiles("test")
+@org.springframework.test.context.TestPropertySource(properties = "app.history.dedup.enabled=true")
 class RecommendationHistoryDedupTest {
     @Autowired RecommendationService recommendationService;
     @Autowired RecommendationHistoryRepository historyRepository;

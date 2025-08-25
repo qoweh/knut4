@@ -12,6 +12,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 
 /** HTTP implementation calling an OpenAI-compatible /v1/chat/completions endpoint (GPT4All server). */
 @Component
@@ -123,17 +125,19 @@ public class HttpOpenAiLikeLlmClient implements LlmClient {
     @SuppressWarnings("unchecked")
     public List<StructuredMenuPlace> suggestMenusWithPlaces(List<String> moods, String weather, Integer budget, Double latitude, Double longitude, String placeSamplesJson, int menuMax) {
     long start = System.nanoTime();
-        String prompt = "당신은 음식 추천 시스템입니다. 아래 JSON 배열의 장소 리스트를 참고하여 최대 " + menuMax + "개의 메뉴를 제안하고 각 메뉴에 잘 맞는 장소 1~2개를 선택하세요.\n" +
-                "출력 형식: 메뉴명 | 장소1,장소2 | 간단이유  (장소2는 선택적)\n" +
-                "조건: 날씨="+weather+", 예산="+(budget==null?"?":budget)+", 기분="+(moods==null?"":String.join(",", moods))+"\n" +
-                "장소목록(JSON):\n" + placeSamplesJson + "\n" +
-                "메뉴는 중복 없이 한국어로, 이유는 25자 내.\n";
+    String prompt = "당신은 음식 추천 시스템입니다. 아래 JSON 배열(placeSamples)의 장소 리스트를 참고하여 최대 " + menuMax + "개의 메뉴를 제안하고 각 메뉴에 잘 맞는 장소 1~2개를 선택하세요." +
+        "\n조건: 날씨="+weather+", 예산="+(budget==null?"?":budget)+", 기분="+(moods==null?"":String.join(",", moods))+"" +
+        "\n장소 배열의 각 객체 필드: name(이름), distanceMeters(사용자와의 거리 m), category(추정 카테고리)." +
+        "\n반드시 아래 JSON Schema에 맞는 하나의 JSON 배열을 출력하세요. 그 외 텍스트 금지." +
+        "\nSchema: [{\"menu\":string, \"reason\":string, \"places\":[{\"name\":string}]}]" +
+        "\n제약: reason 25자 내, menu 중복 금지, places 배열은 최대 2개 name만 포함." +
+        "\nplaceSamples=" + placeSamplesJson + "\n출력:";
         try {
             Map<String,Object> payload = Map.of(
                     "model", model.isBlank()?"gpt4all":model,
                     "messages", List.of(Map.of("role","user","content", prompt)),
-                    "max_tokens", 400,
-                    "temperature", 0.4
+            "max_tokens", 600,
+            "temperature", 0.3
             );
             Map<String,Object> resp = webClient.post().uri("/chat/completions")
                     .contentType(MediaType.APPLICATION_JSON)
@@ -155,7 +159,7 @@ public class HttpOpenAiLikeLlmClient implements LlmClient {
                 Object message = m.get("message");
                 if (message instanceof Map<?,?> mm) content = String.valueOf(mm.get("content")); else content = String.valueOf(m.get("text"));
             } else content = first.toString();
-            return parseStructured(content, menuMax);
+            return parseStructuredJson(content, menuMax);
         } catch (Exception e) {
             org.slf4j.LoggerFactory.getLogger(HttpOpenAiLikeLlmClient.class).error("LLM structured error: {}", e.toString());
             return fallbackStructured(moods, weather, menuMax);
@@ -164,6 +168,51 @@ public class HttpOpenAiLikeLlmClient implements LlmClient {
             long ms = (System.nanoTime()-start)/1_000_000;
             org.slf4j.LoggerFactory.getLogger(HttpOpenAiLikeLlmClient.class).info("suggestMenusWithPlaces completed in {} ms", ms);
         }
+    }
+
+    protected List<StructuredMenuPlace> parseStructuredJson(String content, int menuMax) {
+        if (content == null) return fallbackStructured(List.of(), "", menuMax);
+        String trimmed = content.trim();
+        // If model wrapped JSON in code fences or text, extract first JSON array
+        int start = trimmed.indexOf('[');
+        int end = trimmed.lastIndexOf(']');
+        if (start < 0 || end < start) return parseStructured(trimmed, menuMax); // fallback to line parser
+        String json = trimmed.substring(start, end+1);
+        ObjectMapper mapper = new ObjectMapper();
+        try {
+            List<Map<String,Object>> arr = mapper.readValue(json, new TypeReference<>() {});
+            List<StructuredMenuPlace> out = new ArrayList<>();
+            for (Map<String,Object> obj : arr) {
+                if (out.size() >= menuMax) break;
+                Object menuObj = obj.get("menu");
+                if (menuObj == null) continue;
+                String menu = String.valueOf(menuObj).trim();
+                if (menu.isEmpty()) continue;
+                String reason = obj.getOrDefault("reason", "추천").toString();
+                List<String> places = new ArrayList<>();
+                Object placesObj = obj.get("places");
+                if (placesObj instanceof List<?> pl) {
+                    for (Object p : pl) {
+                        if (p instanceof Map<?,?> pm) {
+                            Object name = pm.get("name");
+                            if (name != null) {
+                                String n = name.toString().trim();
+                                if (!n.isEmpty()) places.add(n);
+                            }
+                        } else if (p instanceof String s) {
+                            String n = s.trim();
+                            if (!n.isEmpty()) places.add(n);
+                        }
+                        if (places.size() >= 2) break;
+                    }
+                }
+                out.add(new StructuredMenuPlace(menu, places, reason));
+            }
+            if (!out.isEmpty()) return out;
+        } catch (Exception ignore) {
+            // fallback
+        }
+        return parseStructured(trimmed, menuMax);
     }
 
     private List<StructuredMenuPlace> parseStructured(String content, int menuMax) {

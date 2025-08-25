@@ -21,6 +21,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.stream.Collectors;
+// Micrometer (fully qualified in code if IDE lint issues)
+import org.springframework.beans.factory.annotation.Value;
 
 @Service
 public class RecommendationService {
@@ -31,23 +33,40 @@ public class RecommendationService {
     private final UserRepository userRepository;
     private final SharedRecommendationRepository sharedRepository;
     private final PreferenceRepository preferenceRepository;
+    // MeterRegistry kept optional via reflection to avoid hard dependency if micrometer not on classpath in some environments
+    private final Object meterRegistry;
+    private final boolean historyDedupEnabled;
 
     public RecommendationService(MapProvider mapProvider,
                                  RecommendationHistoryRepository historyRepository,
                                  @org.springframework.beans.factory.annotation.Autowired(required = false) LlmClient llmClient,
                                  UserRepository userRepository,
                                  SharedRecommendationRepository sharedRepository,
-                                 PreferenceRepository preferenceRepository) {
+                                 PreferenceRepository preferenceRepository,
+                                 @org.springframework.beans.factory.annotation.Autowired(required = false) Object meterRegistry,
+                                 @Value("${app.history.dedup.enabled:true}") boolean historyDedupEnabled) {
         this.mapProvider = mapProvider;
         this.historyRepository = historyRepository;
         this.llmClient = llmClient; // may be null
         this.userRepository = userRepository;
         this.sharedRepository = sharedRepository;
         this.preferenceRepository = preferenceRepository;
+        this.meterRegistry = meterRegistry;
+        this.historyDedupEnabled = historyDedupEnabled;
     }
 
     public RecommendationResponse recommend(RecommendationRequest request) {
-        long tStart = System.nanoTime();
+    long tStart = System.nanoTime();
+    Object sample = null;
+    if (meterRegistry != null) {
+        try {
+            Class<?> timerCls = Class.forName("io.micrometer.core.instrument.Timer");
+            var startMethod = timerCls.getMethod("start", Class.forName("io.micrometer.core.instrument.MeterRegistry"));
+            sample = startMethod.invoke(null, meterRegistry);
+        } catch (Exception ignore) {}
+    }
+        String normalizedWeather = normalizeWeather(request.weather());
+        org.slf4j.LoggerFactory.getLogger(RecommendationService.class).info("recommend request lat={}, lon={}, weather={}, moods={}, budget={}", request.latitude(), request.longitude(), normalizedWeather, request.moods(), request.budget());
         // derive menu candidates
     List<LlmMenuSuggestion> suggestions;
     List<StructuredMenuPlace> structured = null;
@@ -70,7 +89,7 @@ public class RecommendationService {
                 }
             }
             // Prefetch a broader nearby sample with multiple lightweight queries derived from moods for richer LLM context.
-            List<String> nearbyNames;
+            List<PlaceResult> nearbyPlacesFull;
             try {
                 java.util.Set<String> acc = new java.util.LinkedHashSet<>();
                 acc.addAll(mapProvider.search("맛집", request.latitude(), request.longitude(), 1500).stream().map(PlaceResult::name).toList());
@@ -83,16 +102,26 @@ public class RecommendationService {
                         }
                     }
                 }
-                nearbyNames = acc.stream().filter(s -> s != null && !s.isBlank()).limit(30).toList();
+                // After name sampling, fetch minimal details for first N distinct names using generic search again (could optimize via caching); for now search each name individually limited to 1 result.
+                List<String> nameList = acc.stream().filter(s -> s != null && !s.isBlank()).limit(20).toList();
+                java.util.List<PlaceResult> details = new java.util.ArrayList<>();
+                for (String n : nameList) {
+                    try {
+                        var one = mapProvider.search(n, request.latitude(), request.longitude(), 1500);
+                        if (!one.isEmpty()) details.add(one.get(0));
+                    } catch (Exception ignore) {}
+                }
+                nearbyPlacesFull = details;
             } catch (Exception e) {
-                nearbyNames = List.of();
+                nearbyPlacesFull = List.of();
             }
-            // Build place sample JSON
-            String placeSamplesJson = toPlaceSampleJson(nearbyNames, request);
+            List<String> nearbyNames = nearbyPlacesFull.stream().map(PlaceResult::name).toList();
+            // Build place sample JSON with distance/category
+            String placeSamplesJson = toPlaceSampleJson(nearbyPlacesFull);
             // Ask for up to 10 raw menus (simple) first as fallback
-            suggestions = llmClient.suggestMenus(moodContext, request.weather(), request.budget(), request.latitude(), request.longitude(), nearbyNames, 10);
+            suggestions = llmClient.suggestMenus(moodContext, normalizedWeather, request.budget(), request.latitude(), request.longitude(), nearbyNames, 10);
             try {
-                structured = llmClient.suggestMenusWithPlaces(moodContext, request.weather(), request.budget(), request.latitude(), request.longitude(), placeSamplesJson, 10);
+                structured = llmClient.suggestMenusWithPlaces(moodContext, normalizedWeather, request.budget(), request.latitude(), request.longitude(), placeSamplesJson, 10);
             } catch (Exception ignore) {}
         } else {
             String base = request.moods() != null && !request.moods().isEmpty() ? request.moods().get(0) : "맛있는";
@@ -120,10 +149,26 @@ public class RecommendationService {
         final List<StructuredMenuPlace> structuredFinal = structured;
         List<RecommendationResponse.MenuRecommendation> recs = top.stream().map(s -> {
             List<String> mappedPlaces = extractStructuredPlaces(structuredFinal, s.menu());
-            return buildMenuRecommendation(s.menu(), s.reason(), request, noteConflict, mappedPlaces);
+            return buildMenuRecommendation(s.menu(), s.reason(), request, normalizedWeather, noteConflict, mappedPlaces);
         }).collect(Collectors.toList());
-        persistHistory(request, top.isEmpty()? suggestions.get(0).menu() : top.get(0).menu());
-        long elapsedMs = (System.nanoTime()-tStart)/1_000_000;
+        persistHistory(request, normalizedWeather, top.isEmpty()? suggestions.get(0).menu() : top.get(0).menu());
+    long elapsedMs = (System.nanoTime()-tStart)/1_000_000;
+    if (sample != null && meterRegistry != null) {
+        try {
+            Class<?> timerCls = Class.forName("io.micrometer.core.instrument.Timer");
+            var builderMethod = timerCls.getMethod("builder", String.class);
+            Object builder = builderMethod.invoke(null, "recommend.pipeline.duration");
+            // call description(String)
+            var descMethod = builder.getClass().getMethod("description", String.class);
+            builder = descMethod.invoke(builder, "Total recommendation pipeline ms");
+            // call register(MeterRegistry)
+            var registerMethod = builder.getClass().getMethod("register", Class.forName("io.micrometer.core.instrument.MeterRegistry"));
+            Object timer = registerMethod.invoke(builder, meterRegistry);
+            var sampleCls = Class.forName("io.micrometer.core.instrument.Timer$Sample");
+            var stopMethod = sampleCls.getMethod("stop", timerCls);
+            stopMethod.invoke(sample, timer);
+        } catch (Exception ignore) {}
+    }
         org.slf4j.LoggerFactory.getLogger(RecommendationService.class).info("recommend pipeline completed in {} ms (menusRaw={} filtered={})", elapsedMs, suggestions.size(), top.size());
         return new RecommendationResponse(recs);
     }
@@ -183,10 +228,20 @@ public class RecommendationService {
     public RecommendationHistory getShared(String token) {
         SharedRecommendation sr = sharedRepository.findByToken(token)
                 .orElseThrow(() -> new ResourceNotFoundException("Share token not found"));
-        return sr.getHistory();
+        RecommendationHistory h = sr.getHistory();
+        // touch lazy fields to initialize before leaving transactional boundary
+        if (h != null) {
+            h.getWeather();
+            h.getMoods();
+            h.getBudget();
+            h.getLatitude();
+            h.getLongitude();
+            h.getCreatedAt();
+        }
+        return h;
     }
 
-    private RecommendationResponse.MenuRecommendation buildMenuRecommendation(String menu, String llmReason, RecommendationRequest request, boolean noteConflict, List<String> preselectedPlaceNames) {
+    private RecommendationResponse.MenuRecommendation buildMenuRecommendation(String menu, String llmReason, RecommendationRequest request, String normalizedWeather, boolean noteConflict, List<String> preselectedPlaceNames) {
         String keyword = menu + " 음식";
         List<PlaceResult> places;
         try {
@@ -209,7 +264,7 @@ public class RecommendationService {
         List<RecommendationResponse.Place> mapped = places.stream()
                 .map(p -> new RecommendationResponse.Place(p.name(), p.latitude(), p.longitude(), p.address(), p.distanceMeters(), estimateDurationMinutes(p.distanceMeters())))
                 .collect(Collectors.toList());
-        return new RecommendationResponse.MenuRecommendation(menu, enrichReason(menu, llmReason, request.weather(), request.budget(), noteConflict), mapped);
+    return new RecommendationResponse.MenuRecommendation(menu, enrichReason(menu, llmReason, normalizedWeather, request.budget(), noteConflict), mapped);
     }
 
     private double estimateDurationMinutes(double distanceMeters) {
@@ -224,15 +279,16 @@ public class RecommendationService {
         return sb.toString();
     }
 
-    private void persistHistory(RecommendationRequest request, String chosenMenu) {
+    private void persistHistory(RecommendationRequest request, String normalizedWeather, String chosenMenu) {
         try {
+            if (historyRepository == null || userRepository == null) return;
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
             org.springframework.security.core.userdetails.User principal = null;
             if (auth != null && auth.getPrincipal() instanceof org.springframework.security.core.userdetails.User p) {
                 principal = p;
             }
             // idempotency: if last record (within 2 seconds) has identical weather,moods,budget,lat,lon skip
-            if (principal != null) {
+            if (principal != null && historyDedupEnabled) {
                 var userOpt = userRepository.findByUsername(principal.getUsername());
                 if (userOpt.isPresent()) {
                     var user = userOpt.get();
@@ -249,7 +305,7 @@ public class RecommendationService {
                 }
             }
             RecommendationHistory h = new RecommendationHistory();
-            h.setWeather(request.weather());
+            h.setWeather(normalizedWeather);
             h.setMoods(request.moods() == null ? null : String.join(",", request.moods()));
             h.setBudget(request.budget());
             h.setLatitude(request.latitude());
@@ -269,7 +325,7 @@ public class RecommendationService {
     String lastMoodsNorm = last.getMoods() == null ? null : java.util.Arrays.stream(last.getMoods().split(","))
         .map(String::trim).filter(s->!s.isEmpty()).reduce((a,b)->a+","+b).orElse("");
     if (lastMoodsNorm != null && lastMoodsNorm.isBlank()) lastMoodsNorm = null;
-    boolean fieldsEqual = eq(last.getWeather(), req.weather()) &&
+    boolean fieldsEqual = eq(last.getWeather(), normalizeWeather(req.weather())) &&
         eq(lastMoodsNorm, normalizedMoods) &&
         eq(last.getBudget(), req.budget()) &&
         eq(last.getLatitude(), req.latitude()) &&
@@ -281,6 +337,7 @@ public class RecommendationService {
 
     private Preference currentUserPreference() {
         try {
+            if (userRepository == null || preferenceRepository == null) return null;
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
             if (auth != null && auth.getPrincipal() instanceof org.springframework.security.core.userdetails.User principal) {
                 var userOpt = userRepository.findByUsername(principal.getUsername());
@@ -292,16 +349,40 @@ public class RecommendationService {
         return null;
     }
 
-    private String toPlaceSampleJson(List<String> names, RecommendationRequest request) {
-        // Basic JSON array of objects: name only for now (distance unknown here unless we change search to keep objects)
+    private String toPlaceSampleJson(List<PlaceResult> places) {
         StringBuilder sb = new StringBuilder("[");
-        for (int i=0;i<names.size();i++) {
+        for (int i=0;i<places.size();i++) {
+            PlaceResult p = places.get(i);
             if (i>0) sb.append(',');
-            sb.append('{').append("\"name\":\"").append(names.get(i).replace("\"","\\\""))
-                    .append("\"}");
+            sb.append('{')
+                    .append("\"name\":\"").append(escape(p.name())).append("\",")
+                    .append("\"distanceMeters\":").append(String.format(java.util.Locale.US, "%.1f", p.distanceMeters())).append(',')
+                    .append("\"category\":\"").append(escape(inferCategory(p.name()))).append("\"")
+                    .append('}');
         }
         sb.append(']');
         return sb.toString();
+    }
+
+    private String escape(String s) { return s==null?"":s.replace("\"","\\\""); }
+
+    private String inferCategory(String name) {
+        if (name == null) return "기타";
+        String lower = name.toLowerCase();
+        if (lower.contains("카페") || lower.contains("coffee") ) return "카페";
+        if (lower.contains("치킨")) return "치킨";
+        if (lower.contains("피자")) return "피자";
+        if (lower.contains("분식")) return "분식";
+        if (lower.contains("고기") || lower.contains("삼겹") || lower.contains("갈비")) return "고기";
+        if (lower.contains("디저트") || lower.contains("베이커")) return "디저트";
+        if (lower.contains("김밥")) return "김밥";
+        if (lower.contains("라멘") || lower.contains("라면")) return "라멘";
+        if (lower.contains("초밥") || lower.contains("스시")) return "초밥";
+        if (lower.contains("한식")) return "한식";
+        if (lower.contains("중식")) return "중식";
+        if (lower.contains("일식")) return "일식";
+        if (lower.contains("양식")) return "양식";
+        return "기타";
     }
 
     private List<String> extractStructuredPlaces(List<StructuredMenuPlace> structured, String menu) {
@@ -310,6 +391,10 @@ public class RecommendationService {
             if (smp.menu().equalsIgnoreCase(menu)) return smp.places();
         }
         return List.of();
+    }
+
+    private String normalizeWeather(String weather) {
+        return (weather == null || weather.isBlank()) ? "기본" : weather.trim();
     }
 
     // Map a mood token to an exploratory search keyword to diversify place name sampling.
